@@ -33,9 +33,10 @@ Preferred communication style: Simple, everyday language.
 - **Tables**:
   - `users` - User profiles (required for Replit Auth)
   - `sessions` - Session storage (required for Replit Auth)
-  - `sensor_readings` - Time-series sensor data with userId, sensorType, value, unit
+  - `sensor_readings` - Time-series sensor data with userId, sensorType, value, unit, deviceId
   - `equipment` - Tank equipment with on/off state and settings
   - `tanks` - User tank configurations
+  - `devices` - Registered IoT devices (Golioth) with goliothDeviceId mapped to userId
 
 ### Project Structure
 ```
@@ -70,6 +71,31 @@ shared/           # Shared code between client and server
 - `POST /api/sensors` - Create new sensor reading
 - `GET /api/equipment` - Get user's equipment list
 - `PATCH /api/equipment/:id` - Update equipment state
+- `GET /api/devices` - Get user's registered IoT devices
+- `POST /api/devices` - Register a new Golioth device
+- `POST /webhooks/golioth` - Webhook endpoint for Golioth to push sensor data
+
+### Golioth IoT Integration
+The app integrates with Golioth IoT platform to receive sensor data from hardware devices:
+
+**How it works:**
+1. Register your Golioth device via `POST /api/devices` with `goliothDeviceId` and `name`
+2. Configure Golioth Pipelines to send webhook to `/webhooks/golioth`
+3. When hardware uploads temperature data to Golioth, it forwards to your app
+4. Data is stored in `sensor_readings` table linked to your user account
+
+**Golioth Webhook Payload Format:**
+```json
+{
+  "deviceId": "your-golioth-device-id",
+  "temp": 78.5
+}
+```
+Alternative field names supported: `device_id`, `temperature`, or nested in `data` object.
+
+**Security:**
+- Set `GOLIOTH_WEBHOOK_SECRET` environment variable
+- Golioth should send this in `X-Webhook-Secret` or `Authorization` header
 
 ## External Dependencies
 

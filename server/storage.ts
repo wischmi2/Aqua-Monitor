@@ -2,12 +2,15 @@ import {
   sensorReadings, 
   equipment,
   tanks,
+  devices,
   type SensorReading, 
   type InsertSensorReading,
   type Equipment,
   type InsertEquipment,
   type Tank,
-  type InsertTank
+  type InsertTank,
+  type Device,
+  type InsertDevice
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte } from "drizzle-orm";
@@ -25,6 +28,11 @@ export interface IStorage {
 
   getTanks(userId: string): Promise<Tank[]>;
   createTank(tank: InsertTank): Promise<Tank>;
+
+  getDevices(userId: string): Promise<Device[]>;
+  getDeviceByGoliothId(goliothDeviceId: string): Promise<Device | undefined>;
+  createDevice(device: InsertDevice): Promise<Device>;
+  updateDeviceLastSeen(id: number): Promise<Device | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -94,6 +102,29 @@ export class DatabaseStorage implements IStorage {
   async createTank(tank: InsertTank): Promise<Tank> {
     const [created] = await db.insert(tanks).values(tank).returning();
     return created;
+  }
+
+  async getDevices(userId: string): Promise<Device[]> {
+    return db.select().from(devices).where(eq(devices.userId, userId));
+  }
+
+  async getDeviceByGoliothId(goliothDeviceId: string): Promise<Device | undefined> {
+    const [device] = await db.select().from(devices).where(eq(devices.goliothDeviceId, goliothDeviceId));
+    return device;
+  }
+
+  async createDevice(device: InsertDevice): Promise<Device> {
+    const [created] = await db.insert(devices).values(device).returning();
+    return created;
+  }
+
+  async updateDeviceLastSeen(id: number): Promise<Device | undefined> {
+    const [updated] = await db
+      .update(devices)
+      .set({ lastSeenAt: new Date() })
+      .where(eq(devices.id, id))
+      .returning();
+    return updated;
   }
 }
 

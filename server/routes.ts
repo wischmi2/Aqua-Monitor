@@ -5,6 +5,15 @@ import { isAuthenticated } from "./replit_integrations/auth";
 import { insertSensorReadingSchema } from "@shared/schema";
 import { z } from "zod";
 
+const goliothWebhookSchema = z.object({
+  deviceId: z.string().optional(),
+  device_id: z.string().optional(),
+  temp: z.number().optional(),
+  temperature: z.number().optional(),
+  timestamp: z.string().optional(),
+  data: z.record(z.unknown()).optional(),
+}).passthrough();
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -125,6 +134,98 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating equipment:", error);
       res.status(500).json({ message: "Failed to update equipment" });
+    }
+  });
+
+  app.post("/webhooks/golioth", async (req, res) => {
+    try {
+      const webhookSecret = process.env.GOLIOTH_WEBHOOK_SECRET;
+      const providedSecret = req.headers["x-webhook-secret"] || req.headers["authorization"];
+      
+      if (webhookSecret && providedSecret !== webhookSecret && providedSecret !== `Bearer ${webhookSecret}`) {
+        console.warn("Golioth webhook: Invalid secret provided");
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const result = goliothWebhookSchema.safeParse(req.body);
+      if (!result.success) {
+        console.error("Golioth webhook: Invalid payload", result.error.errors);
+        return res.status(400).json({ message: "Invalid payload", errors: result.error.errors });
+      }
+
+      const payload = result.data;
+      const goliothDeviceId = payload.deviceId || payload.device_id || (payload.data as any)?.deviceId;
+      
+      if (!goliothDeviceId) {
+        console.warn("Golioth webhook: No device ID in payload");
+        return res.status(400).json({ message: "Device ID required" });
+      }
+
+      const device = await storage.getDeviceByGoliothId(goliothDeviceId);
+      if (!device) {
+        console.warn(`Golioth webhook: Unknown device ${goliothDeviceId}`);
+        return res.status(404).json({ message: "Device not registered", deviceId: goliothDeviceId });
+      }
+
+      await storage.updateDeviceLastSeen(device.id);
+
+      const temperature = payload.temp ?? payload.temperature ?? (payload.data as any)?.temp ?? (payload.data as any)?.temperature;
+      
+      if (temperature !== undefined && typeof temperature === "number") {
+        await storage.createSensorReading({
+          userId: device.userId,
+          sensorType: "temperature",
+          value: temperature,
+          unit: "°F",
+          deviceId: goliothDeviceId,
+        });
+        
+        console.log(`Golioth webhook: Stored temp ${temperature}°F from device ${goliothDeviceId}`);
+      }
+
+      res.json({ success: true, deviceId: goliothDeviceId });
+    } catch (error) {
+      console.error("Golioth webhook error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/devices", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const deviceList = await storage.getDevices(userId);
+      res.json(deviceList);
+    } catch (error) {
+      console.error("Error fetching devices:", error);
+      res.status(500).json({ message: "Failed to fetch devices" });
+    }
+  });
+
+  app.post("/api/devices", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { goliothDeviceId, name, tankId } = req.body;
+      
+      if (!goliothDeviceId || !name) {
+        return res.status(400).json({ message: "goliothDeviceId and name are required" });
+      }
+
+      const existing = await storage.getDeviceByGoliothId(goliothDeviceId);
+      if (existing) {
+        return res.status(409).json({ message: "Device already registered" });
+      }
+
+      const device = await storage.createDevice({
+        userId,
+        goliothDeviceId,
+        name,
+        tankId: tankId || null,
+      });
+
+      res.status(201).json(device);
+    } catch (error) {
+      console.error("Error creating device:", error);
+      res.status(500).json({ message: "Failed to register device" });
     }
   });
 

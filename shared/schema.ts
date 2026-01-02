@@ -13,6 +13,7 @@ export const sensorReadings = pgTable("sensor_readings", {
   sensorType: text("sensor_type").notNull(),
   value: real("value").notNull(),
   unit: text("unit").notNull(),
+  deviceId: text("device_id"),
   recordedAt: timestamp("recorded_at").defaultNow().notNull(),
 });
 
@@ -47,6 +48,36 @@ export const insertTankSchema = createInsertSchema(tanks).omit({
 
 export type InsertTank = z.infer<typeof insertTankSchema>;
 export type Tank = typeof tanks.$inferSelect;
+
+export const devices = pgTable("devices", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull(),
+  tankId: integer("tank_id"),
+  goliothDeviceId: text("golioth_device_id").notNull().unique(),
+  name: text("name").notNull(),
+  lastSeenAt: timestamp("last_seen_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const devicesRelations = relations(devices, ({ one }) => ({
+  user: one(users, {
+    fields: [devices.userId],
+    references: [users.id],
+  }),
+  tank: one(tanks, {
+    fields: [devices.tankId],
+    references: [tanks.id],
+  }),
+}));
+
+export const insertDeviceSchema = createInsertSchema(devices).omit({
+  id: true,
+  lastSeenAt: true,
+  createdAt: true,
+});
+
+export type InsertDevice = z.infer<typeof insertDeviceSchema>;
+export type Device = typeof devices.$inferSelect;
 
 export const equipment = pgTable("equipment", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
