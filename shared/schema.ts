@@ -1,18 +1,69 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, real, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { relations } from "drizzle-orm";
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+export * from "./models/auth";
+import { users } from "./models/auth";
+
+export const sensorReadings = pgTable("sensor_readings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull(),
+  sensorType: text("sensor_type").notNull(),
+  value: real("value").notNull(),
+  unit: text("unit").notNull(),
+  recordedAt: timestamp("recorded_at").defaultNow().notNull(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const sensorReadingsRelations = relations(sensorReadings, ({ one }) => ({
+  user: one(users, {
+    fields: [sensorReadings.userId],
+    references: [users.id],
+  }),
+}));
+
+export const insertSensorReadingSchema = createInsertSchema(sensorReadings).omit({
+  id: true,
+  recordedAt: true,
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export type InsertSensorReading = z.infer<typeof insertSensorReadingSchema>;
+export type SensorReading = typeof sensorReadings.$inferSelect;
+
+export const tanks = pgTable("tanks", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  volume: real("volume"),
+  volumeUnit: text("volume_unit").default("gallons"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTankSchema = createInsertSchema(tanks).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTank = z.infer<typeof insertTankSchema>;
+export type Tank = typeof tanks.$inferSelect;
+
+export const equipment = pgTable("equipment", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  isOn: integer("is_on").default(0).notNull(),
+  value: real("value"),
+  minValue: real("min_value"),
+  maxValue: real("max_value"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertEquipmentSchema = createInsertSchema(equipment).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEquipment = z.infer<typeof insertEquipmentSchema>;
+export type Equipment = typeof equipment.$inferSelect;
