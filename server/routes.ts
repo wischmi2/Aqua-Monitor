@@ -198,9 +198,13 @@ export async function registerRoutes(
       }
 
       res.json({ success: true, deviceId: goliothDeviceId, claimed: !!device.userId });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Golioth webhook error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      console.error("Error stack:", error?.stack);
+      res.status(500).json({ 
+        message: "Internal server error", 
+        error: process.env.NODE_ENV === 'development' ? error?.message : undefined 
+      });
     }
   });
 
