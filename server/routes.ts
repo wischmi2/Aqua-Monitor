@@ -10,7 +10,8 @@ const goliothWebhookSchema = z.object({
   device_id: z.string().optional(),
   temp: z.number().optional(),
   temperature: z.number().optional(),
-  timestamp: z.string().optional(),
+  timestamp: z.unknown().optional(),
+  project_id: z.string().optional(),
   data: z.record(z.unknown()).optional(),
 }).passthrough();
 
@@ -139,6 +140,13 @@ export async function registerRoutes(
 
   app.post("/webhooks/golioth", async (req, res) => {
     try {
+      console.log("=== GOLIOTH WEBHOOK DEBUG ===");
+      console.log("Timestamp:", new Date().toISOString());
+      console.log("Headers:", JSON.stringify(req.headers, null, 2));
+      console.log("Raw Body:", JSON.stringify(req.body, null, 2));
+      console.log("Content-Type:", req.headers["content-type"]);
+      console.log("=============================");
+
       const webhookSecret = process.env.GOLIOTH_WEBHOOK_SECRET;
       const providedSecret = req.headers["x-webhook-secret"] || req.headers["authorization"];
       
@@ -150,11 +158,14 @@ export async function registerRoutes(
       const result = goliothWebhookSchema.safeParse(req.body);
       if (!result.success) {
         console.error("Golioth webhook: Invalid payload", result.error.errors);
+        console.log("Validation failed - returning 400");
         return res.status(400).json({ message: "Invalid payload", errors: result.error.errors });
       }
 
       const payload = result.data;
+      console.log("Parsed payload:", JSON.stringify(payload, null, 2));
       const goliothDeviceId = payload.deviceId || payload.device_id || (payload.data as any)?.deviceId;
+      console.log("Extracted device ID:", goliothDeviceId);
       
       if (!goliothDeviceId) {
         console.warn("Golioth webhook: No device ID in payload");
