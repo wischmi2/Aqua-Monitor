@@ -203,7 +203,8 @@ export async function registerRoutes(
       console.error("Error stack:", error?.stack);
       res.status(500).json({ 
         message: "Internal server error", 
-        error: process.env.NODE_ENV === 'development' ? error?.message : undefined 
+        error: error?.message,
+        stack: error?.stack?.split('\n').slice(0, 3).join('\n')
       });
     }
   });
