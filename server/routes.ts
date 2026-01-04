@@ -8,12 +8,64 @@ import { z } from "zod";
 const goliothWebhookSchema = z.object({
   deviceId: z.string().optional(),
   device_id: z.string().optional(),
-  temp: z.number().optional(),
-  temperature: z.number().optional(),
   timestamp: z.unknown().optional(),
   project_id: z.string().optional(),
   data: z.record(z.unknown()).optional(),
 }).passthrough();
+
+// Sensor mapping: defines all supported sensor types with their possible field names and units
+const SENSOR_MAPPINGS = [
+  { 
+    sensorType: "temperature", 
+    unit: "°F", 
+    fieldNames: ["temp", "temperature", "Temperature", "TEMP"] 
+  },
+  { 
+    sensorType: "salinity", 
+    unit: "ppt", 
+    fieldNames: ["salinity", "Salinity", "SALINITY", "salt"] 
+  },
+  { 
+    sensorType: "ph", 
+    unit: "pH", 
+    fieldNames: ["ph", "pH", "PH", "pH Level", "ph_level", "phLevel"] 
+  },
+  { 
+    sensorType: "ammonia", 
+    unit: "ppm", 
+    fieldNames: ["ammonia", "Ammonia", "AMMONIA", "nh3", "NH3"] 
+  },
+  { 
+    sensorType: "nitrite", 
+    unit: "ppm", 
+    fieldNames: ["nitrite", "Nitrite", "NITRITE", "no2", "NO2"] 
+  },
+  { 
+    sensorType: "nitrate", 
+    unit: "ppm", 
+    fieldNames: ["nitrate", "Nitrate", "NITRATE", "no3", "NO3"] 
+  },
+  { 
+    sensorType: "dissolved_oxygen", 
+    unit: "mg/L", 
+    fieldNames: ["dissolved_oxygen", "do", "DO", "dissolvedOxygen", "DissolvedOxygen", "oxygen", "o2", "O2"] 
+  },
+];
+
+// Helper function to extract sensor value from payload
+function extractSensorValue(payload: any, dataObj: any, fieldNames: string[]): number | undefined {
+  for (const fieldName of fieldNames) {
+    // Check root level first
+    if (payload[fieldName] !== undefined && typeof payload[fieldName] === "number") {
+      return payload[fieldName];
+    }
+    // Check nested data object
+    if (dataObj && dataObj[fieldName] !== undefined && typeof dataObj[fieldName] === "number") {
+      return dataObj[fieldName];
+    }
+  }
+  return undefined;
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -181,23 +233,45 @@ export async function registerRoutes(
 
       await storage.updateDeviceLastSeen(device.id);
 
-      const temperature = payload.temp ?? payload.temperature ?? (payload.data as any)?.temp ?? (payload.data as any)?.temperature;
-      
-      if (temperature !== undefined && typeof temperature === "number" && device.userId) {
-        await storage.createSensorReading({
-          userId: device.userId,
-          sensorType: "temperature",
-          value: temperature,
-          unit: "°F",
-          deviceId: goliothDeviceId,
-        });
+      const dataObj = payload.data as any;
+      const storedReadings: string[] = [];
+      const receivedReadings: string[] = [];
+
+      // Process all sensor types
+      for (const mapping of SENSOR_MAPPINGS) {
+        const value = extractSensorValue(payload, dataObj, mapping.fieldNames);
         
-        console.log(`Golioth webhook: Stored temp ${temperature}°F from device ${goliothDeviceId}`);
-      } else if (temperature !== undefined && !device.userId) {
-        console.log(`Golioth webhook: Received temp ${temperature}°F from unclaimed device ${goliothDeviceId} (data not stored until claimed)`);
+        if (value !== undefined) {
+          if (device.userId) {
+            await storage.createSensorReading({
+              userId: device.userId,
+              sensorType: mapping.sensorType,
+              value: value,
+              unit: mapping.unit,
+              deviceId: goliothDeviceId,
+            });
+            storedReadings.push(`${mapping.sensorType}: ${value}${mapping.unit}`);
+          } else {
+            receivedReadings.push(`${mapping.sensorType}: ${value}${mapping.unit}`);
+          }
+        }
       }
 
-      res.json({ success: true, deviceId: goliothDeviceId, claimed: !!device.userId });
+      if (storedReadings.length > 0) {
+        console.log(`Golioth webhook: Stored readings from device ${goliothDeviceId}: ${storedReadings.join(", ")}`);
+      }
+      
+      if (receivedReadings.length > 0) {
+        console.log(`Golioth webhook: Received from unclaimed device ${goliothDeviceId} (not stored): ${receivedReadings.join(", ")}`);
+      }
+
+      res.json({ 
+        success: true, 
+        deviceId: goliothDeviceId, 
+        claimed: !!device.userId,
+        sensorsProcessed: storedReadings.length + receivedReadings.length,
+        sensorsStored: storedReadings.length
+      });
     } catch (error: any) {
       console.error("Golioth webhook error:", error);
       console.error("Error stack:", error?.stack);
