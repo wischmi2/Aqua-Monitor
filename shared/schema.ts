@@ -51,7 +51,7 @@ export type Tank = typeof tanks.$inferSelect;
 
 export const devices = pgTable("devices", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  userId: varchar("user_id").notNull(),
+  userId: varchar("user_id"),
   tankId: integer("tank_id"),
   goliothDeviceId: text("golioth_device_id").notNull().unique(),
   name: text("name").notNull(),

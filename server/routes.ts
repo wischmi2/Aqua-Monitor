@@ -161,17 +161,18 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Device ID required" });
       }
 
-      const device = await storage.getDeviceByGoliothId(goliothDeviceId);
+      let device = await storage.getDeviceByGoliothId(goliothDeviceId);
+      
       if (!device) {
-        console.warn(`Golioth webhook: Unknown device ${goliothDeviceId}`);
-        return res.status(404).json({ message: "Device not registered", deviceId: goliothDeviceId });
+        device = await storage.createUnclaimedDevice(goliothDeviceId);
+        console.log(`Golioth webhook: Auto-created unclaimed device ${goliothDeviceId}`);
       }
 
       await storage.updateDeviceLastSeen(device.id);
 
       const temperature = payload.temp ?? payload.temperature ?? (payload.data as any)?.temp ?? (payload.data as any)?.temperature;
       
-      if (temperature !== undefined && typeof temperature === "number") {
+      if (temperature !== undefined && typeof temperature === "number" && device.userId) {
         await storage.createSensorReading({
           userId: device.userId,
           sensorType: "temperature",
@@ -181,9 +182,11 @@ export async function registerRoutes(
         });
         
         console.log(`Golioth webhook: Stored temp ${temperature}°F from device ${goliothDeviceId}`);
+      } else if (temperature !== undefined && !device.userId) {
+        console.log(`Golioth webhook: Received temp ${temperature}°F from unclaimed device ${goliothDeviceId} (data not stored until claimed)`);
       }
 
-      res.json({ success: true, deviceId: goliothDeviceId });
+      res.json({ success: true, deviceId: goliothDeviceId, claimed: !!device.userId });
     } catch (error) {
       console.error("Golioth webhook error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -226,6 +229,84 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error creating device:", error);
       res.status(500).json({ message: "Failed to register device" });
+    }
+  });
+
+  app.get("/api/devices/unclaimed", isAuthenticated, async (req: any, res) => {
+    try {
+      const deviceList = await storage.getUnclaimedDevices();
+      res.json(deviceList);
+    } catch (error) {
+      console.error("Error fetching unclaimed devices:", error);
+      res.status(500).json({ message: "Failed to fetch unclaimed devices" });
+    }
+  });
+
+  app.post("/api/devices/:id/claim", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const id = parseInt(req.params.id);
+      const { name } = req.body;
+      
+      const device = await storage.getDeviceById(id);
+      if (!device) {
+        return res.status(404).json({ message: "Device not found" });
+      }
+      
+      if (device.userId) {
+        return res.status(400).json({ message: "Device is already claimed" });
+      }
+      
+      const claimed = await storage.claimDevice(id, userId, name);
+      res.json(claimed);
+    } catch (error) {
+      console.error("Error claiming device:", error);
+      res.status(500).json({ message: "Failed to claim device" });
+    }
+  });
+
+  app.post("/api/devices/:id/unclaim", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const id = parseInt(req.params.id);
+      
+      const device = await storage.getDeviceById(id);
+      if (!device) {
+        return res.status(404).json({ message: "Device not found" });
+      }
+      
+      if (device.userId !== userId) {
+        return res.status(403).json({ message: "Not authorized to unclaim this device" });
+      }
+      
+      const unclaimed = await storage.unclaimDevice(id);
+      res.json(unclaimed);
+    } catch (error) {
+      console.error("Error unclaiming device:", error);
+      res.status(500).json({ message: "Failed to unclaim device" });
+    }
+  });
+
+  app.patch("/api/devices/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const id = parseInt(req.params.id);
+      const { name } = req.body;
+      
+      const device = await storage.getDeviceById(id);
+      if (!device) {
+        return res.status(404).json({ message: "Device not found" });
+      }
+      
+      if (device.userId !== userId) {
+        return res.status(403).json({ message: "Not authorized to update this device" });
+      }
+      
+      const updated = await storage.updateDevice(id, { name });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating device:", error);
+      res.status(500).json({ message: "Failed to update device" });
     }
   });
 

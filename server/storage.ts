@@ -13,7 +13,7 @@ import {
   type InsertDevice
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte } from "drizzle-orm";
+import { eq, desc, and, gte, isNull } from "drizzle-orm";
 
 export interface IStorage {
   getSensorReadings(userId: string): Promise<SensorReading[]>;
@@ -30,8 +30,14 @@ export interface IStorage {
   createTank(tank: InsertTank): Promise<Tank>;
 
   getDevices(userId: string): Promise<Device[]>;
+  getDeviceById(id: number): Promise<Device | undefined>;
   getDeviceByGoliothId(goliothDeviceId: string): Promise<Device | undefined>;
+  getUnclaimedDevices(): Promise<Device[]>;
   createDevice(device: InsertDevice): Promise<Device>;
+  createUnclaimedDevice(goliothDeviceId: string): Promise<Device>;
+  claimDevice(id: number, userId: string, name?: string): Promise<Device | undefined>;
+  unclaimDevice(id: number): Promise<Device | undefined>;
+  updateDevice(id: number, data: { name?: string }): Promise<Device | undefined>;
   updateDeviceLastSeen(id: number): Promise<Device | undefined>;
 }
 
@@ -108,14 +114,62 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(devices).where(eq(devices.userId, userId));
   }
 
+  async getDeviceById(id: number): Promise<Device | undefined> {
+    const [device] = await db.select().from(devices).where(eq(devices.id, id));
+    return device;
+  }
+
   async getDeviceByGoliothId(goliothDeviceId: string): Promise<Device | undefined> {
     const [device] = await db.select().from(devices).where(eq(devices.goliothDeviceId, goliothDeviceId));
     return device;
   }
 
+  async getUnclaimedDevices(): Promise<Device[]> {
+    return db.select().from(devices).where(isNull(devices.userId)).orderBy(desc(devices.lastSeenAt));
+  }
+
   async createDevice(device: InsertDevice): Promise<Device> {
     const [created] = await db.insert(devices).values(device).returning();
     return created;
+  }
+
+  async createUnclaimedDevice(goliothDeviceId: string): Promise<Device> {
+    const [created] = await db.insert(devices).values({
+      goliothDeviceId,
+      name: `Device ${goliothDeviceId.slice(-6)}`,
+      userId: null,
+    }).returning();
+    return created;
+  }
+
+  async claimDevice(id: number, userId: string, name?: string): Promise<Device | undefined> {
+    const updateData: { userId: string; name?: string } = { userId };
+    if (name) updateData.name = name;
+    
+    const [updated] = await db
+      .update(devices)
+      .set(updateData)
+      .where(eq(devices.id, id))
+      .returning();
+    return updated;
+  }
+
+  async unclaimDevice(id: number): Promise<Device | undefined> {
+    const [updated] = await db
+      .update(devices)
+      .set({ userId: null })
+      .where(eq(devices.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateDevice(id: number, data: { name?: string }): Promise<Device | undefined> {
+    const [updated] = await db
+      .update(devices)
+      .set(data)
+      .where(eq(devices.id, id))
+      .returning();
+    return updated;
   }
 
   async updateDeviceLastSeen(id: number): Promise<Device | undefined> {
