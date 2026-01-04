@@ -73,16 +73,21 @@ shared/           # Shared code between client and server
 - `PATCH /api/equipment/:id` - Update equipment state
 - `GET /api/devices` - Get user's registered IoT devices
 - `POST /api/devices` - Register a new Golioth device
+- `GET /api/devices/unclaimed` - Get list of unclaimed devices available to claim
+- `POST /api/devices/:id/claim` - Claim an unclaimed device
+- `POST /api/devices/:id/unclaim` - Release a claimed device
+- `PATCH /api/devices/:id` - Update device name
 - `POST /webhooks/golioth` - Webhook endpoint for Golioth to push sensor data
 
 ### Golioth IoT Integration
 The app integrates with Golioth IoT platform to receive sensor data from hardware devices:
 
-**How it works:**
-1. Register your Golioth device via `POST /api/devices` with `goliothDeviceId` and `name`
-2. Configure Golioth Pipelines to send webhook to `/webhooks/golioth`
-3. When hardware uploads temperature data to Golioth, it forwards to your app
-4. Data is stored in `sensor_readings` table linked to your user account
+**How it works (Auto-Registration):**
+1. Configure Golioth Pipelines to send webhook to `/webhooks/golioth`
+2. When an unknown device sends data, it's automatically created as "unclaimed"
+3. User goes to Settings page and claims the device to link it to their account
+4. Once claimed, sensor data is stored in `sensor_readings` table linked to user account
+5. Unclaimed devices don't store sensor readings until claimed by a user
 
 **Golioth Webhook Payload Format:**
 ```json
