@@ -9,7 +9,8 @@ import {
   Droplets,
   Wind,
   Beaker,
-  TestTube
+  TestTube,
+  Waves
 } from "lucide-react";
 import type { SensorReading } from "@shared/schema";
 
@@ -30,6 +31,7 @@ const sensorConfigs: SensorConfig[] = [
   { type: "nitrite", label: "Nitrite", icon: TestTube, unit: "ppm", normalRange: [0, 0.02], warningRange: [0, 0.1] },
   { type: "nitrate", label: "Nitrate", icon: Beaker, unit: "ppm", normalRange: [0, 20], warningRange: [0, 40] },
   { type: "dissolved_oxygen", label: "Dissolved O2", icon: Wind, unit: "mg/L", normalRange: [6, 8], warningRange: [5, 10] },
+  { type: "water_level", label: "Water Level", icon: Waves, unit: "%", normalRange: [80, 100], warningRange: [70, 100] },
 ];
 
 function getStatus(value: number, config: SensorConfig): SensorStatus {

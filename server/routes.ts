@@ -50,6 +50,11 @@ const SENSOR_MAPPINGS = [
     unit: "mg/L", 
     fieldNames: ["dissolved_oxygen", "do", "DO", "dissolvedOxygen", "DissolvedOxygen", "oxygen", "o2", "O2"] 
   },
+  { 
+    sensorType: "water_level", 
+    unit: "%", 
+    fieldNames: ["water_level", "waterLevel", "WaterLevel", "level", "water"] 
+  },
 ];
 
 // Helper function to extract sensor value from payload
@@ -411,6 +416,7 @@ export async function registerRoutes(
         { type: "nitrite", unit: "ppm", baseValue: 0.01, variance: 0.01 },
         { type: "nitrate", unit: "ppm", baseValue: 10, variance: 5 },
         { type: "dissolved_oxygen", unit: "mg/L", baseValue: 7, variance: 1 },
+        { type: "water_level", unit: "%", baseValue: 90, variance: 5 },
       ];
 
       const readings = [];
