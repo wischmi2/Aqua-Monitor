@@ -51,9 +51,9 @@ const SENSOR_MAPPINGS = [
     fieldNames: ["dissolved_oxygen", "do", "DO", "dissolvedOxygen", "DissolvedOxygen", "oxygen", "o2", "O2"] 
   },
   { 
-    sensorType: "water_level", 
-    unit: "%", 
-    fieldNames: ["water_level", "waterLevel", "WaterLevel", "level", "water"] 
+    sensorType: "water_present", 
+    unit: "", 
+    fieldNames: ["water_present", "waterPresent", "WaterPresent", "water", "water_detected", "waterDetected"] 
   },
 ];
 
@@ -416,7 +416,7 @@ export async function registerRoutes(
         { type: "nitrite", unit: "ppm", baseValue: 0.01, variance: 0.01 },
         { type: "nitrate", unit: "ppm", baseValue: 10, variance: 5 },
         { type: "dissolved_oxygen", unit: "mg/L", baseValue: 7, variance: 1 },
-        { type: "water_level", unit: "%", baseValue: 90, variance: 5 },
+        { type: "water_present", unit: "", baseValue: 1, variance: 0 },
       ];
 
       const readings = [];

@@ -31,7 +31,7 @@ const sensorConfigs: SensorConfig[] = [
   { type: "nitrite", label: "Nitrite", icon: TestTube, unit: "ppm", normalRange: [0, 0.02], warningRange: [0, 0.1] },
   { type: "nitrate", label: "Nitrate", icon: Beaker, unit: "ppm", normalRange: [0, 20], warningRange: [0, 40] },
   { type: "dissolved_oxygen", label: "Dissolved O2", icon: Wind, unit: "mg/L", normalRange: [6, 8], warningRange: [5, 10] },
-  { type: "water_level", label: "Water Level", icon: Waves, unit: "%", normalRange: [80, 100], warningRange: [70, 100] },
+  { type: "water_present", label: "Water Present", icon: Waves, unit: "", normalRange: [1, 1], warningRange: [0, 1] },
 ];
 
 function getStatus(value: number, config: SensorConfig): SensorStatus {
@@ -105,7 +105,7 @@ export default function Dashboard() {
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {isLoading ? (
           <>
-            {Array.from({ length: 7 }).map((_, i) => (
+            {Array.from({ length: 8 }).map((_, i) => (
               <SensorSkeleton key={i} />
             ))}
           </>
@@ -118,12 +118,17 @@ export default function Dashboard() {
               ? getTimeAgo(new Date(reading.recordedAt))
               : "No data";
 
+            // Display "Yes" or "No" for binary water_present sensor
+            const displayValue = config.type === "water_present" 
+              ? (value >= 1 ? "Yes" : "No")
+              : value;
+
             return (
               <SensorCard
                 key={config.type}
                 icon={config.icon}
                 label={config.label}
-                value={value}
+                value={displayValue}
                 unit={config.unit}
                 status={status}
                 lastUpdated={lastUpdated}
