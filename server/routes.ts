@@ -2,8 +2,86 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { isAuthenticated } from "./replit_integrations/auth";
-import { insertSensorReadingSchema } from "@shared/schema";
+import { insertSensorReadingSchema, type AlertSetting } from "@shared/schema";
 import { z } from "zod";
+import twilio from "twilio";
+
+// Helper to format sensor name for display
+function formatSensorName(sensorType: string): string {
+  const names: Record<string, string> = {
+    temperature: "Temperature",
+    salinity: "Salinity",
+    ph: "pH",
+    ammonia: "Ammonia",
+    nitrite: "Nitrite",
+    nitrate: "Nitrate",
+    dissolved_oxygen: "Dissolved Oxygen",
+    water_present: "Water Present",
+  };
+  return names[sensorType] || sensorType;
+}
+
+// Check alerts and send SMS if thresholds are exceeded
+async function checkAndSendAlerts(
+  userId: string,
+  sensorType: string,
+  value: number,
+  unit: string
+): Promise<void> {
+  try {
+    const userSettings = await storage.getUserSettings(userId);
+    
+    if (!userSettings?.alertsEnabled || !userSettings.phoneNumber) {
+      return;
+    }
+
+    const alertSetting = await storage.getAlertSettingBySensor(userId, sensorType);
+    
+    if (!alertSetting || !alertSetting.enabled) {
+      return;
+    }
+
+    // Check cooldown
+    if (alertSetting.lastAlertAt) {
+      const cooldownMs = (userSettings.alertCooldownMinutes || 30) * 60 * 1000;
+      const timeSinceLastAlert = Date.now() - alertSetting.lastAlertAt.getTime();
+      if (timeSinceLastAlert < cooldownMs) {
+        return;
+      }
+    }
+
+    // Check thresholds
+    let alertMessage: string | null = null;
+    const sensorName = formatSensorName(sensorType);
+
+    if (alertSetting.minValue !== null && value < alertSetting.minValue) {
+      alertMessage = `ReefWatch Alert: ${sensorName} is LOW at ${value}${unit} (min: ${alertSetting.minValue}${unit})`;
+    } else if (alertSetting.maxValue !== null && value > alertSetting.maxValue) {
+      alertMessage = `ReefWatch Alert: ${sensorName} is HIGH at ${value}${unit} (max: ${alertSetting.maxValue}${unit})`;
+    }
+
+    if (alertMessage) {
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+      const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
+
+      if (accountSid && authToken && twilioPhone) {
+        const client = twilio(accountSid, authToken);
+        
+        await client.messages.create({
+          body: alertMessage,
+          from: twilioPhone,
+          to: userSettings.phoneNumber,
+        });
+
+        await storage.updateAlertLastSent(alertSetting.id);
+        console.log(`SMS alert sent for ${sensorType}: ${alertMessage}`);
+      }
+    }
+  } catch (error) {
+    console.error("Error checking/sending alerts:", error);
+  }
+}
 
 const goliothWebhookSchema = z.object({
   deviceId: z.string().optional(),
@@ -265,6 +343,9 @@ export async function registerRoutes(
               deviceId: goliothDeviceId,
             });
             storedReadings.push(`${mapping.sensorType}: ${value}${mapping.unit}`);
+            
+            // Check alerts and send SMS if needed
+            await checkAndSendAlerts(device.userId, mapping.sensorType, value, mapping.unit);
           } else {
             receivedReadings.push(`${mapping.sensorType}: ${value}${mapping.unit}`);
           }
@@ -411,6 +492,173 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating device:", error);
       res.status(500).json({ message: "Failed to update device" });
+    }
+  });
+
+  // Alert Settings API
+  app.get("/api/alerts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const alerts = await storage.getAlertSettings(userId);
+      res.json(alerts);
+    } catch (error) {
+      console.error("Error fetching alert settings:", error);
+      res.status(500).json({ message: "Failed to fetch alert settings" });
+    }
+  });
+
+  app.post("/api/alerts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { sensorType, minValue, maxValue, enabled } = req.body;
+      
+      if (!sensorType) {
+        return res.status(400).json({ message: "sensorType is required" });
+      }
+
+      const existing = await storage.getAlertSettingBySensor(userId, sensorType);
+      if (existing) {
+        return res.status(409).json({ message: "Alert for this sensor type already exists" });
+      }
+
+      const alert = await storage.createAlertSetting({
+        userId,
+        sensorType,
+        minValue: minValue ?? null,
+        maxValue: maxValue ?? null,
+        enabled: enabled ?? 1,
+      });
+      res.status(201).json(alert);
+    } catch (error) {
+      console.error("Error creating alert:", error);
+      res.status(500).json({ message: "Failed to create alert" });
+    }
+  });
+
+  app.patch("/api/alerts/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const id = parseInt(req.params.id);
+      const { minValue, maxValue, enabled } = req.body;
+      
+      const alerts = await storage.getAlertSettings(userId);
+      const alert = alerts.find(a => a.id === id);
+      
+      if (!alert) {
+        return res.status(404).json({ message: "Alert not found" });
+      }
+
+      const updated = await storage.updateAlertSetting(id, {
+        minValue: minValue ?? undefined,
+        maxValue: maxValue ?? undefined,
+        enabled: enabled ?? undefined,
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating alert:", error);
+      res.status(500).json({ message: "Failed to update alert" });
+    }
+  });
+
+  app.delete("/api/alerts/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const id = parseInt(req.params.id);
+      
+      const alerts = await storage.getAlertSettings(userId);
+      const alert = alerts.find(a => a.id === id);
+      
+      if (!alert) {
+        return res.status(404).json({ message: "Alert not found" });
+      }
+
+      await storage.deleteAlertSetting(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting alert:", error);
+      res.status(500).json({ message: "Failed to delete alert" });
+    }
+  });
+
+  // User Settings API
+  app.get("/api/user-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      let settings = await storage.getUserSettings(userId);
+      
+      if (!settings) {
+        settings = await storage.createUserSettings({
+          userId,
+          alertsEnabled: 1,
+          alertCooldownMinutes: 30,
+        });
+      }
+      
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching user settings:", error);
+      res.status(500).json({ message: "Failed to fetch user settings" });
+    }
+  });
+
+  app.patch("/api/user-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { phoneNumber, alertsEnabled, alertCooldownMinutes } = req.body;
+      
+      let settings = await storage.getUserSettings(userId);
+      
+      if (!settings) {
+        settings = await storage.createUserSettings({
+          userId,
+          phoneNumber: phoneNumber ?? null,
+          alertsEnabled: alertsEnabled ?? 1,
+          alertCooldownMinutes: alertCooldownMinutes ?? 30,
+        });
+      } else {
+        settings = await storage.updateUserSettings(userId, {
+          phoneNumber: phoneNumber !== undefined ? phoneNumber : undefined,
+          alertsEnabled: alertsEnabled !== undefined ? alertsEnabled : undefined,
+          alertCooldownMinutes: alertCooldownMinutes !== undefined ? alertCooldownMinutes : undefined,
+        });
+      }
+      
+      res.json(settings);
+    } catch (error) {
+      console.error("Error updating user settings:", error);
+      res.status(500).json({ message: "Failed to update user settings" });
+    }
+  });
+
+  app.post("/api/alerts/test-sms", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const settings = await storage.getUserSettings(userId);
+      
+      if (!settings?.phoneNumber) {
+        return res.status(400).json({ message: "Phone number not configured" });
+      }
+
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+      const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
+
+      if (!accountSid || !authToken || !twilioPhone) {
+        return res.status(500).json({ message: "Twilio not configured" });
+      }
+
+      const twilio = require("twilio")(accountSid, authToken);
+      
+      await twilio.messages.create({
+        body: "ReefWatch Test: Your SMS alerts are working correctly!",
+        from: twilioPhone,
+        to: settings.phoneNumber,
+      });
+
+      res.json({ success: true, message: "Test SMS sent" });
+    } catch (error: any) {
+      console.error("Error sending test SMS:", error);
+      res.status(500).json({ message: "Failed to send test SMS", error: error?.message });
     }
   });
 
