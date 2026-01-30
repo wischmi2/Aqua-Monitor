@@ -657,9 +657,9 @@ export async function registerRoutes(
         return res.status(500).json({ message: "Twilio not configured" });
       }
 
-      const twilio = require("twilio")(accountSid, authToken);
+      const client = twilio(accountSid, authToken);
       
-      await twilio.messages.create({
+      await client.messages.create({
         body: "ReefWatch Test: Your SMS alerts are working correctly!",
         from: twilioPhone,
         to: settings.phoneNumber,
