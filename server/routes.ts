@@ -57,16 +57,25 @@ const SENSOR_MAPPINGS = [
   },
 ];
 
+// Helper function to convert value to number (handles booleans for binary sensors)
+function toNumber(value: any): number | undefined {
+  if (typeof value === "number") return value;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  return undefined;
+}
+
 // Helper function to extract sensor value from payload
 function extractSensorValue(payload: any, dataObj: any, fieldNames: string[]): number | undefined {
   for (const fieldName of fieldNames) {
     // Check root level first
-    if (payload[fieldName] !== undefined && typeof payload[fieldName] === "number") {
-      return payload[fieldName];
+    if (payload[fieldName] !== undefined) {
+      const numValue = toNumber(payload[fieldName]);
+      if (numValue !== undefined) return numValue;
     }
     // Check nested data object
-    if (dataObj && dataObj[fieldName] !== undefined && typeof dataObj[fieldName] === "number") {
-      return dataObj[fieldName];
+    if (dataObj && dataObj[fieldName] !== undefined) {
+      const numValue = toNumber(dataObj[fieldName]);
+      if (numValue !== undefined) return numValue;
     }
   }
   return undefined;
