@@ -98,3 +98,56 @@ export const insertEquipmentSchema = createInsertSchema(equipment).omit({
 
 export type InsertEquipment = z.infer<typeof insertEquipmentSchema>;
 export type Equipment = typeof equipment.$inferSelect;
+
+export const alertSettings = pgTable("alert_settings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull(),
+  sensorType: text("sensor_type").notNull(),
+  minValue: real("min_value"),
+  maxValue: real("max_value"),
+  enabled: integer("enabled").default(1).notNull(),
+  lastAlertAt: timestamp("last_alert_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const alertSettingsRelations = relations(alertSettings, ({ one }) => ({
+  user: one(users, {
+    fields: [alertSettings.userId],
+    references: [users.id],
+  }),
+}));
+
+export const insertAlertSettingSchema = createInsertSchema(alertSettings).omit({
+  id: true,
+  lastAlertAt: true,
+  createdAt: true,
+});
+
+export type InsertAlertSetting = z.infer<typeof insertAlertSettingSchema>;
+export type AlertSetting = typeof alertSettings.$inferSelect;
+
+export const userSettings = pgTable("user_settings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull().unique(),
+  phoneNumber: text("phone_number"),
+  alertsEnabled: integer("alerts_enabled").default(1).notNull(),
+  alertCooldownMinutes: integer("alert_cooldown_minutes").default(30).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const userSettingsRelations = relations(userSettings, ({ one }) => ({
+  user: one(users, {
+    fields: [userSettings.userId],
+    references: [users.id],
+  }),
+}));
+
+export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
+export type UserSettings = typeof userSettings.$inferSelect;

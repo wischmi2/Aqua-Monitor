@@ -3,6 +3,8 @@ import {
   equipment,
   tanks,
   devices,
+  alertSettings,
+  userSettings,
   type SensorReading, 
   type InsertSensorReading,
   type Equipment,
@@ -10,7 +12,11 @@ import {
   type Tank,
   type InsertTank,
   type Device,
-  type InsertDevice
+  type InsertDevice,
+  type AlertSetting,
+  type InsertAlertSetting,
+  type UserSettings,
+  type InsertUserSettings
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, isNull } from "drizzle-orm";
@@ -39,6 +45,19 @@ export interface IStorage {
   unclaimDevice(id: number): Promise<Device | undefined>;
   updateDevice(id: number, data: { name?: string }): Promise<Device | undefined>;
   updateDeviceLastSeen(id: number): Promise<Device | undefined>;
+
+  // Alert settings
+  getAlertSettings(userId: string): Promise<AlertSetting[]>;
+  getAlertSettingBySensor(userId: string, sensorType: string): Promise<AlertSetting | undefined>;
+  createAlertSetting(setting: InsertAlertSetting): Promise<AlertSetting>;
+  updateAlertSetting(id: number, data: Partial<InsertAlertSetting>): Promise<AlertSetting | undefined>;
+  deleteAlertSetting(id: number): Promise<void>;
+  updateAlertLastSent(id: number): Promise<AlertSetting | undefined>;
+
+  // User settings
+  getUserSettings(userId: string): Promise<UserSettings | undefined>;
+  createUserSettings(settings: InsertUserSettings): Promise<UserSettings>;
+  updateUserSettings(userId: string, data: Partial<InsertUserSettings>): Promise<UserSettings | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -177,6 +196,66 @@ export class DatabaseStorage implements IStorage {
       .update(devices)
       .set({ lastSeenAt: new Date() })
       .where(eq(devices.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Alert settings
+  async getAlertSettings(userId: string): Promise<AlertSetting[]> {
+    return db.select().from(alertSettings).where(eq(alertSettings.userId, userId));
+  }
+
+  async getAlertSettingBySensor(userId: string, sensorType: string): Promise<AlertSetting | undefined> {
+    const [setting] = await db
+      .select()
+      .from(alertSettings)
+      .where(and(eq(alertSettings.userId, userId), eq(alertSettings.sensorType, sensorType)));
+    return setting;
+  }
+
+  async createAlertSetting(setting: InsertAlertSetting): Promise<AlertSetting> {
+    const [created] = await db.insert(alertSettings).values(setting).returning();
+    return created;
+  }
+
+  async updateAlertSetting(id: number, data: Partial<InsertAlertSetting>): Promise<AlertSetting | undefined> {
+    const [updated] = await db
+      .update(alertSettings)
+      .set(data)
+      .where(eq(alertSettings.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteAlertSetting(id: number): Promise<void> {
+    await db.delete(alertSettings).where(eq(alertSettings.id, id));
+  }
+
+  async updateAlertLastSent(id: number): Promise<AlertSetting | undefined> {
+    const [updated] = await db
+      .update(alertSettings)
+      .set({ lastAlertAt: new Date() })
+      .where(eq(alertSettings.id, id))
+      .returning();
+    return updated;
+  }
+
+  // User settings
+  async getUserSettings(userId: string): Promise<UserSettings | undefined> {
+    const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
+    return settings;
+  }
+
+  async createUserSettings(settings: InsertUserSettings): Promise<UserSettings> {
+    const [created] = await db.insert(userSettings).values(settings).returning();
+    return created;
+  }
+
+  async updateUserSettings(userId: string, data: Partial<InsertUserSettings>): Promise<UserSettings | undefined> {
+    const [updated] = await db
+      .update(userSettings)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(userSettings.userId, userId))
       .returning();
     return updated;
   }
