@@ -15,14 +15,14 @@ import type { Device, AlertSetting, UserSettings } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const SENSOR_TYPES = [
-  { value: "temperature", label: "Temperature", unit: "°F" },
-  { value: "salinity", label: "Salinity", unit: "ppt" },
-  { value: "ph", label: "pH", unit: "pH" },
-  { value: "ammonia", label: "Ammonia", unit: "ppm" },
-  { value: "nitrite", label: "Nitrite", unit: "ppm" },
-  { value: "nitrate", label: "Nitrate", unit: "ppm" },
-  { value: "dissolved_oxygen", label: "Dissolved Oxygen", unit: "mg/L" },
-  { value: "water_present", label: "Water Present", unit: "" },
+  { value: "temperature", label: "Temperature", unit: "°F", isBoolean: false },
+  { value: "salinity", label: "Salinity", unit: "ppt", isBoolean: false },
+  { value: "ph", label: "pH", unit: "pH", isBoolean: false },
+  { value: "ammonia", label: "Ammonia", unit: "ppm", isBoolean: false },
+  { value: "nitrite", label: "Nitrite", unit: "ppm", isBoolean: false },
+  { value: "nitrate", label: "Nitrate", unit: "ppm", isBoolean: false },
+  { value: "dissolved_oxygen", label: "Dissolved Oxygen", unit: "mg/L", isBoolean: false },
+  { value: "water_present", label: "Water Present", unit: "", isBoolean: true },
 ];
 
 export default function Settings() {
@@ -35,6 +35,7 @@ export default function Settings() {
   const [newAlertSensor, setNewAlertSensor] = useState("");
   const [newAlertMin, setNewAlertMin] = useState("");
   const [newAlertMax, setNewAlertMax] = useState("");
+  const [newAlertBooleanValue, setNewAlertBooleanValue] = useState<"yes" | "no">("no");
 
   const { data: myDevices = [], isLoading: loadingMyDevices } = useQuery<Device[]>({
     queryKey: ["/api/devices"],
@@ -220,6 +221,12 @@ export default function Settings() {
     return SENSOR_TYPES.find(s => s.value === sensorType)?.unit || "";
   };
 
+  const isBooleanSensor = (sensorType: string) => {
+    return SENSOR_TYPES.find(s => s.value === sensorType)?.isBoolean || false;
+  };
+
+  const selectedSensorIsBoolean = newAlertSensor ? isBooleanSensor(newAlertSensor) : false;
+
   const availableSensors = SENSOR_TYPES.filter(
     s => !alertSettings.some(a => a.sensorType === s.value)
   );
@@ -230,11 +237,31 @@ export default function Settings() {
 
   const handleAddAlert = () => {
     if (!newAlertSensor) return;
-    createAlertMutation.mutate({
-      sensorType: newAlertSensor,
-      minValue: newAlertMin ? parseFloat(newAlertMin) : null,
-      maxValue: newAlertMax ? parseFloat(newAlertMax) : null,
-    });
+    
+    const isBoolean = isBooleanSensor(newAlertSensor);
+    
+    if (isBoolean) {
+      createAlertMutation.mutate({
+        sensorType: newAlertSensor,
+        minValue: newAlertBooleanValue === "no" ? 0.5 : null,
+        maxValue: newAlertBooleanValue === "yes" ? 0.5 : null,
+      });
+    } else {
+      createAlertMutation.mutate({
+        sensorType: newAlertSensor,
+        minValue: newAlertMin ? parseFloat(newAlertMin) : null,
+        maxValue: newAlertMax ? parseFloat(newAlertMax) : null,
+      });
+    }
+  };
+
+  const getBooleanAlertLabel = (alert: AlertSetting) => {
+    if (alert.minValue !== null && alert.minValue > 0) {
+      return "Alert when: No";
+    } else if (alert.maxValue !== null && alert.maxValue < 1) {
+      return "Alert when: Yes";
+    }
+    return "";
   };
 
   return (
@@ -507,10 +534,16 @@ export default function Settings() {
                       <span className="font-medium">{getSensorLabel(alert.sensorType)}</span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm text-muted-foreground">Min:</span>
-                      <span className="text-sm">{alert.minValue ?? "—"}{getSensorUnit(alert.sensorType)}</span>
-                      <span className="text-sm text-muted-foreground">Max:</span>
-                      <span className="text-sm">{alert.maxValue ?? "—"}{getSensorUnit(alert.sensorType)}</span>
+                      {isBooleanSensor(alert.sensorType) ? (
+                        <span className="text-sm">{getBooleanAlertLabel(alert)}</span>
+                      ) : (
+                        <>
+                          <span className="text-sm text-muted-foreground">Min:</span>
+                          <span className="text-sm">{alert.minValue ?? "—"}{getSensorUnit(alert.sensorType)}</span>
+                          <span className="text-sm text-muted-foreground">Max:</span>
+                          <span className="text-sm">{alert.maxValue ?? "—"}{getSensorUnit(alert.sensorType)}</span>
+                        </>
+                      )}
                       <Button
                         size="icon"
                         variant="ghost"
@@ -530,7 +563,12 @@ export default function Settings() {
               <div className="space-y-3 pt-2">
                 <h5 className="text-sm font-medium">Add New Alert</h5>
                 <div className="flex flex-wrap gap-2">
-                  <Select value={newAlertSensor} onValueChange={setNewAlertSensor}>
+                  <Select value={newAlertSensor} onValueChange={(v) => {
+                    setNewAlertSensor(v);
+                    setNewAlertMin("");
+                    setNewAlertMax("");
+                    setNewAlertBooleanValue("no");
+                  }}>
                     <SelectTrigger className="w-[180px]" data-testid="select-sensor-type">
                       <SelectValue placeholder="Select sensor" />
                     </SelectTrigger>
@@ -542,22 +580,38 @@ export default function Settings() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Input
-                    type="number"
-                    placeholder="Min"
-                    value={newAlertMin}
-                    onChange={(e) => setNewAlertMin(e.target.value)}
-                    className="w-20"
-                    data-testid="input-alert-min"
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Max"
-                    value={newAlertMax}
-                    onChange={(e) => setNewAlertMax(e.target.value)}
-                    className="w-20"
-                    data-testid="input-alert-max"
-                  />
+                  
+                  {selectedSensorIsBoolean ? (
+                    <Select value={newAlertBooleanValue} onValueChange={(v: "yes" | "no") => setNewAlertBooleanValue(v)}>
+                      <SelectTrigger className="w-[140px]" data-testid="select-alert-boolean">
+                        <SelectValue placeholder="Alert when" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="yes">Alert when: Yes</SelectItem>
+                        <SelectItem value="no">Alert when: No</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <>
+                      <Input
+                        type="number"
+                        placeholder="Min"
+                        value={newAlertMin}
+                        onChange={(e) => setNewAlertMin(e.target.value)}
+                        className="w-20"
+                        data-testid="input-alert-min"
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Max"
+                        value={newAlertMax}
+                        onChange={(e) => setNewAlertMax(e.target.value)}
+                        className="w-20"
+                        data-testid="input-alert-max"
+                      />
+                    </>
+                  )}
+                  
                   <Button
                     onClick={handleAddAlert}
                     disabled={!newAlertSensor || createAlertMutation.isPending}
