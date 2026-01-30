@@ -37,6 +37,8 @@ Preferred communication style: Simple, everyday language.
   - `equipment` - Tank equipment with on/off state and settings
   - `tanks` - User tank configurations
   - `devices` - Registered IoT devices (Golioth) with goliothDeviceId mapped to userId
+  - `user_settings` - Per-user settings including phone number, alertsEnabled flag, alertCooldownMinutes
+  - `alert_settings` - Per-user alert thresholds for each sensor type (minValue, maxValue, enabled, lastAlertAt)
 
 ### Project Structure
 ```
@@ -101,6 +103,33 @@ Alternative field names supported: `device_id`, `temperature`, or nested in `dat
 **Security:**
 - Set `GOLIOTH_WEBHOOK_SECRET` environment variable
 - Golioth should send this in `X-Webhook-Secret` or `Authorization` header
+
+### SMS Alerts (Twilio Integration)
+The app can send SMS text messages when sensor readings go outside user-defined thresholds:
+
+**How it works:**
+1. User enters phone number in Settings page (with country code, e.g., +1234567890)
+2. User creates alert thresholds for sensors (min/max values)
+3. User enables SMS alerts master switch
+4. When Golioth webhook receives data, it checks against user's alert thresholds
+5. If reading is outside threshold and cooldown period has passed, SMS is sent via Twilio
+
+**Required Secrets:**
+- `TWILIO_ACCOUNT_SID` - Your Twilio account SID
+- `TWILIO_AUTH_TOKEN` - Your Twilio auth token  
+- `TWILIO_PHONE_NUMBER` - Your Twilio phone number (with +country code)
+
+**API Endpoints for Alerts:**
+- `GET /api/user-settings` - Get user's SMS settings (phone, enabled, cooldown)
+- `PATCH /api/user-settings` - Update user's SMS settings
+- `GET /api/alerts` - Get user's alert thresholds
+- `POST /api/alerts` - Create new alert threshold
+- `PATCH /api/alerts/:id` - Update alert threshold
+- `DELETE /api/alerts/:id` - Delete alert threshold
+- `POST /api/alerts/test-sms` - Send test SMS to verify setup
+
+**Alert Cooldown:**
+Configurable per-user (5-120 minutes) to prevent spam. Each sensor type has independent cooldown tracking via `lastAlertAt` field.
 
 ## External Dependencies
 

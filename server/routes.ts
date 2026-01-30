@@ -65,18 +65,21 @@ async function checkAndSendAlerts(
       const authToken = process.env.TWILIO_AUTH_TOKEN;
       const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
 
-      if (accountSid && authToken && twilioPhone) {
-        const client = twilio(accountSid, authToken);
-        
-        await client.messages.create({
-          body: alertMessage,
-          from: twilioPhone,
-          to: userSettings.phoneNumber,
-        });
-
-        await storage.updateAlertLastSent(alertSetting.id);
-        console.log(`SMS alert sent for ${sensorType}: ${alertMessage}`);
+      if (!accountSid || !authToken || !twilioPhone) {
+        console.warn(`SMS alert would be sent for ${sensorType} but Twilio not configured (missing env vars)`);
+        return;
       }
+
+      const client = twilio(accountSid, authToken);
+      
+      await client.messages.create({
+        body: alertMessage,
+        from: twilioPhone,
+        to: userSettings.phoneNumber,
+      });
+
+      await storage.updateAlertLastSent(alertSetting.id);
+      console.log(`SMS alert sent for ${sensorType}: ${alertMessage}`);
     }
   } catch (error) {
     console.error("Error checking/sending alerts:", error);
@@ -605,6 +608,13 @@ export async function registerRoutes(
     try {
       const userId = req.user.claims.sub;
       const { phoneNumber, alertsEnabled, alertCooldownMinutes } = req.body;
+      
+      if (phoneNumber !== undefined && phoneNumber !== null && phoneNumber !== '') {
+        const phoneRegex = /^\+[1-9]\d{6,14}$/;
+        if (!phoneRegex.test(phoneNumber)) {
+          return res.status(400).json({ message: "Invalid phone number format. Use E.164 format (e.g., +12025551234)" });
+        }
+      }
       
       let settings = await storage.getUserSettings(userId);
       
