@@ -229,21 +229,34 @@ export async function registerRoutes(
       const userId = req.user.claims.sub;
       let equipmentList = await storage.getEquipment(userId);
       
+      const allDefaults = [
+        { userId, name: "Heater", type: "heater", isOn: 1, value: null, minValue: null, maxValue: null },
+        { userId, name: "Filter Pump", type: "filter", isOn: 1, value: null, minValue: null, maxValue: null },
+        { userId, name: "Tank Lights", type: "lights", isOn: 1, value: 75, minValue: 0, maxValue: 100 },
+        { userId, name: "Wave Maker", type: "wavemaker", isOn: 1, value: 60, minValue: 0, maxValue: 100 },
+        { userId, name: "Protein Skimmer", type: "skimmer", isOn: 1, value: null, minValue: null, maxValue: null },
+        { userId, name: "Powerhead", type: "powerhead", isOn: 0, value: null, minValue: null, maxValue: null },
+        { userId, name: "Water Control", type: "water_control", isOn: 0, value: null, minValue: null, maxValue: null },
+      ];
+
       if (equipmentList.length === 0) {
-        const defaultEquipment = [
-          { userId, name: "Heater", type: "heater", isOn: 1, value: null, minValue: null, maxValue: null },
-          { userId, name: "Filter Pump", type: "filter", isOn: 1, value: null, minValue: null, maxValue: null },
-          { userId, name: "Tank Lights", type: "lights", isOn: 1, value: 75, minValue: 0, maxValue: 100 },
-          { userId, name: "Wave Maker", type: "wavemaker", isOn: 1, value: 60, minValue: 0, maxValue: 100 },
-          { userId, name: "Protein Skimmer", type: "skimmer", isOn: 1, value: null, minValue: null, maxValue: null },
-          { userId, name: "Powerhead", type: "powerhead", isOn: 0, value: null, minValue: null, maxValue: null },
-        ];
-        
-        for (const eq of defaultEquipment) {
+        for (const eq of allDefaults) {
           await storage.createEquipment(eq);
         }
-        
         equipmentList = await storage.getEquipment(userId);
+      } else {
+        // Add any missing equipment types (e.g. water_control for existing users)
+        const existingTypes = new Set(equipmentList.map((e) => e.type));
+        let added = false;
+        for (const def of allDefaults) {
+          if (!existingTypes.has(def.type)) {
+            await storage.createEquipment(def);
+            added = true;
+          }
+        }
+        if (added) {
+          equipmentList = await storage.getEquipment(userId);
+        }
       }
       
       res.json(equipmentList);
@@ -278,6 +291,42 @@ export async function registerRoutes(
       }
       
       const updated = await storage.updateEquipment(id, result.data);
+
+      // If this is water_control and isOn is being set, write solenoid state to Golioth LightDB State
+      if (existingEquipment.type === "water_control" && result.data.isOn !== undefined) {
+        const solenoidValue = result.data.isOn === 1;
+        const apiKey = process.env.GOLIOTH_API_KEY;
+        const projectId = process.env.GOLIOTH_PROJECT_ID;
+
+        if (apiKey && projectId) {
+          // Find the user's claimed device to get the Golioth device ID
+          const userDevices = await storage.getDevices(userId);
+          for (const device of userDevices) {
+            try {
+              const goliothUrl = `https://api.golioth.io/v1/projects/${projectId}/devices/${device.goliothDeviceId}/lightdb/state`;
+              const goliothRes = await fetch(goliothUrl, {
+                method: "PUT",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-api-key": apiKey,
+                },
+                body: JSON.stringify({ solenoid: solenoidValue }),
+              });
+              if (goliothRes.ok) {
+                console.log(`Wrote solenoid=${solenoidValue} to Golioth device ${device.goliothDeviceId}`);
+              } else {
+                const errText = await goliothRes.text();
+                console.warn(`Golioth LightDB write failed for device ${device.goliothDeviceId}: ${goliothRes.status} ${errText}`);
+              }
+            } catch (goliothErr) {
+              console.error(`Error writing to Golioth device ${device.goliothDeviceId}:`, goliothErr);
+            }
+          }
+        } else {
+          console.warn("GOLIOTH_API_KEY or GOLIOTH_PROJECT_ID not set — skipping LightDB write");
+        }
+      }
+
       res.json(updated);
     } catch (error) {
       console.error("Error updating equipment:", error);
@@ -355,26 +404,6 @@ export async function registerRoutes(
         }
       }
 
-      // Handle solenoid field → update water_control equipment state
-      const solenoidRaw = payload["solenoid"] ?? (dataObj && dataObj["solenoid"]);
-      if (solenoidRaw !== undefined && device.userId) {
-        const solenoidOn = typeof solenoidRaw === "boolean" ? (solenoidRaw ? 1 : 0) : (Number(solenoidRaw) ? 1 : 0);
-        let waterCtrl = await storage.getEquipmentByType(device.userId, "water_control");
-        if (!waterCtrl) {
-          waterCtrl = await storage.createEquipment({
-            userId: device.userId,
-            name: "Water Control",
-            type: "water_control",
-            isOn: solenoidOn,
-          });
-        } else {
-          await storage.updateEquipment(waterCtrl.id, { isOn: solenoidOn });
-        }
-        storedReadings.push(`water_control: ${solenoidOn ? "open" : "closed"}`);
-        console.log(`Golioth webhook: Updated water_control equipment to ${solenoidOn ? "ON" : "OFF"} for user ${device.userId}`);
-      } else if (solenoidRaw !== undefined) {
-        receivedReadings.push(`solenoid: ${solenoidRaw}`);
-      }
 
       if (storedReadings.length > 0) {
         console.log(`Golioth webhook: Stored readings from device ${goliothDeviceId}: ${storedReadings.join(", ")}`);
