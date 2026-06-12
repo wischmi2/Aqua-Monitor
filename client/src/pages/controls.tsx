@@ -12,7 +12,8 @@ import {
   Lightbulb, 
   Waves,
   Droplets,
-  Power
+  Power,
+  Droplet
 } from "lucide-react";
 import type { Equipment } from "@shared/schema";
 
@@ -33,6 +34,7 @@ const equipmentConfigs: EquipmentConfig[] = [
   { type: "wavemaker", label: "Wave Maker", description: "Water circulation pump", icon: Waves, hasSlider: true, sliderLabel: "Flow Rate", sliderUnit: "%" },
   { type: "skimmer", label: "Protein Skimmer", description: "Remove organic waste", icon: Droplets },
   { type: "powerhead", label: "Powerhead", description: "Additional water flow", icon: Power },
+  { type: "water_control", label: "Water Control", description: "Solenoid valve (open/closed)", icon: Droplet },
 ];
 
 function EquipmentSkeleton() {

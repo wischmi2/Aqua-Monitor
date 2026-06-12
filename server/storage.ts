@@ -29,6 +29,7 @@ export interface IStorage {
 
   getEquipment(userId: string): Promise<Equipment[]>;
   getEquipmentById(id: number): Promise<Equipment | undefined>;
+  getEquipmentByType(userId: string, type: string): Promise<Equipment | undefined>;
   createEquipment(equipment: InsertEquipment): Promise<Equipment>;
   updateEquipment(id: number, data: Partial<InsertEquipment>): Promise<Equipment | undefined>;
 
@@ -103,6 +104,13 @@ export class DatabaseStorage implements IStorage {
 
   async getEquipmentById(id: number): Promise<Equipment | undefined> {
     const [eq_item] = await db.select().from(equipment).where(eq(equipment.id, id));
+    return eq_item;
+  }
+
+  async getEquipmentByType(userId: string, type: string): Promise<Equipment | undefined> {
+    const [eq_item] = await db.select().from(equipment).where(
+      and(eq(equipment.userId, userId), eq(equipment.type, type))
+    );
     return eq_item;
   }
 

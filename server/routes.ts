@@ -355,6 +355,27 @@ export async function registerRoutes(
         }
       }
 
+      // Handle solenoid field → update water_control equipment state
+      const solenoidRaw = payload["solenoid"] ?? (dataObj && dataObj["solenoid"]);
+      if (solenoidRaw !== undefined && device.userId) {
+        const solenoidOn = typeof solenoidRaw === "boolean" ? (solenoidRaw ? 1 : 0) : (Number(solenoidRaw) ? 1 : 0);
+        let waterCtrl = await storage.getEquipmentByType(device.userId, "water_control");
+        if (!waterCtrl) {
+          waterCtrl = await storage.createEquipment({
+            userId: device.userId,
+            name: "Water Control",
+            type: "water_control",
+            isOn: solenoidOn,
+          });
+        } else {
+          await storage.updateEquipment(waterCtrl.id, { isOn: solenoidOn });
+        }
+        storedReadings.push(`water_control: ${solenoidOn ? "open" : "closed"}`);
+        console.log(`Golioth webhook: Updated water_control equipment to ${solenoidOn ? "ON" : "OFF"} for user ${device.userId}`);
+      } else if (solenoidRaw !== undefined) {
+        receivedReadings.push(`solenoid: ${solenoidRaw}`);
+      }
+
       if (storedReadings.length > 0) {
         console.log(`Golioth webhook: Stored readings from device ${goliothDeviceId}: ${storedReadings.join(", ")}`);
       }
