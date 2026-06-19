@@ -10,8 +10,10 @@ import {
   Wind,
   Beaker,
   TestTube,
-  Waves
+  Waves,
+  Droplet
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { SensorReading } from "@shared/schema";
 
 interface SensorConfig {
@@ -69,6 +71,77 @@ function SensorSkeleton() {
   );
 }
 
+interface WaterFlowCardProps {
+  flowRate: number;
+  totalFlow: number;
+  lastUpdated: string;
+}
+
+const MAX_DISPLAY_LPM = 10;
+
+function WaterFlowCard({ flowRate, totalFlow, lastUpdated }: WaterFlowCardProps) {
+  const pct = Math.min(100, (flowRate / MAX_DISPLAY_LPM) * 100);
+  const isFlowing = flowRate > 0;
+
+  return (
+    <Card data-testid="sensor-flow">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="relative p-2 rounded-md bg-muted">
+              <Droplet className={cn("h-4 w-4", isFlowing ? "text-blue-500" : "text-muted-foreground")} />
+              <div
+                className={cn(
+                  "absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card",
+                  isFlowing ? "bg-blue-500 animate-pulse" : "bg-muted-foreground"
+                )}
+              />
+            </div>
+            <span className="text-sm font-medium">Water Flow</span>
+          </div>
+          <span className="text-xs font-medium text-muted-foreground px-2 py-0.5 rounded-full bg-muted">
+            {isFlowing ? "flowing" : "idle"}
+          </span>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-baseline justify-between gap-1">
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-mono font-medium tracking-tight" data-testid="sensor-flow-rate-value">
+                {flowRate.toFixed(2)}
+              </span>
+              <span className="text-sm text-muted-foreground">L/min</span>
+            </div>
+          </div>
+          <div className="relative h-3 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className={cn(
+                "absolute inset-y-0 left-0 rounded-full transition-all duration-700",
+                isFlowing ? "bg-blue-500" : "bg-muted-foreground/30"
+              )}
+              style={{ width: `${pct}%` }}
+              data-testid="sensor-flow-bar"
+            />
+            {isFlowing && (
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-white/30 animate-pulse"
+                style={{ width: `${pct}%` }}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            Total: <span className="font-mono font-medium text-foreground" data-testid="sensor-flow-total">{totalFlow.toFixed(3)} L</span>
+          </span>
+          <span>Updated {lastUpdated}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const { data: readings, isLoading } = useQuery<SensorReading[]>({
     queryKey: ["/api/sensors/latest"],
@@ -105,37 +178,50 @@ export default function Dashboard() {
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {isLoading ? (
           <>
-            {Array.from({ length: 8 }).map((_, i) => (
+            {Array.from({ length: 9 }).map((_, i) => (
               <SensorSkeleton key={i} />
             ))}
           </>
         ) : (
-          sensorConfigs.map((config) => {
-            const reading = sensorDataMap.get(config.type);
-            const value = reading?.value ?? 0;
-            const status = getStatus(value, config);
-            const lastUpdated = reading?.recordedAt 
-              ? getTimeAgo(new Date(reading.recordedAt))
-              : "No data";
+          <>
+            {sensorConfigs.map((config) => {
+              const reading = sensorDataMap.get(config.type);
+              const value = reading?.value ?? 0;
+              const status = getStatus(value, config);
+              const lastUpdated = reading?.recordedAt 
+                ? getTimeAgo(new Date(reading.recordedAt))
+                : "No data";
 
-            // Display "Yes" or "No" for binary water_present sensor
-            const displayValue = config.type === "water_present" 
-              ? (value >= 1 ? "Yes" : "No")
-              : value;
+              const displayValue = config.type === "water_present" 
+                ? (value >= 1 ? "Yes" : "No")
+                : value;
 
-            return (
-              <SensorCard
-                key={config.type}
-                icon={config.icon}
-                label={config.label}
-                value={displayValue}
-                unit={config.unit}
-                status={status}
-                lastUpdated={lastUpdated}
-                testId={`sensor-${config.type}`}
-              />
-            );
-          })
+              return (
+                <SensorCard
+                  key={config.type}
+                  icon={config.icon}
+                  label={config.label}
+                  value={displayValue}
+                  unit={config.unit}
+                  status={status}
+                  lastUpdated={lastUpdated}
+                  testId={`sensor-${config.type}`}
+                />
+              );
+            })}
+            {(() => {
+              const rateReading = sensorDataMap.get("flow_rate_lpm");
+              const totalReading = sensorDataMap.get("flow_liters");
+              const lastSeen = rateReading?.recordedAt ?? totalReading?.recordedAt;
+              return (
+                <WaterFlowCard
+                  flowRate={rateReading?.value ?? 0}
+                  totalFlow={totalReading?.value ?? 0}
+                  lastUpdated={lastSeen ? getTimeAgo(new Date(lastSeen)) : "No data"}
+                />
+              );
+            })()}
+          </>
         )}
       </div>
     </div>

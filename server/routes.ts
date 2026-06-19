@@ -136,6 +136,16 @@ const SENSOR_MAPPINGS = [
     unit: "", 
     fieldNames: ["water_present", "waterPresent", "WaterPresent", "water", "water_detected", "waterDetected"] 
   },
+  {
+    sensorType: "flow_rate_lpm",
+    unit: "L/min",
+    fieldNames: ["flow_rate_lpm", "flowRateLpm", "flow_rate", "flowRate"]
+  },
+  {
+    sensorType: "flow_liters",
+    unit: "L",
+    fieldNames: ["flow_liters", "flowLiters", "total_flow", "totalFlow"]
+  },
 ];
 
 // Helper function to convert value to number (handles booleans for binary sensors)
@@ -303,14 +313,14 @@ export async function registerRoutes(
           const userDevices = await storage.getDevices(userId);
           for (const device of userDevices) {
             try {
-              const goliothUrl = `https://api.golioth.io/v1/projects/${projectId}/devices/${device.goliothDeviceId}/lightdb/state`;
+              const goliothUrl = `https://api.golioth.io/v1/projects/${projectId}/devices/${device.goliothDeviceId}/lightdb/state/desired/solenoid`;
               const goliothRes = await fetch(goliothUrl, {
                 method: "PUT",
                 headers: {
                   "Content-Type": "application/json",
                   "x-api-key": apiKey,
                 },
-                body: JSON.stringify({ solenoid: solenoidValue }),
+                body: JSON.stringify(solenoidValue),
               });
               if (goliothRes.ok) {
                 console.log(`Wrote solenoid=${solenoidValue} to Golioth device ${device.goliothDeviceId}`);
