@@ -15,6 +15,8 @@ const sensorOptions = [
   { value: "nitrite", label: "Nitrite", unit: "ppm", color: "hsl(var(--chart-5))" },
   { value: "nitrate", label: "Nitrate", unit: "ppm", color: "hsl(var(--chart-1))" },
   { value: "dissolved_oxygen", label: "Dissolved O2", unit: "mg/L", color: "hsl(var(--chart-2))" },
+  { value: "flow_rate_lpm", label: "Water Flow", unit: "L/min", color: "hsl(var(--chart-3))" },
+  { value: "flow_liters", label: "Total Flow", unit: "L", color: "hsl(var(--chart-4))" },
 ];
 
 function formatDate(dateStr: string | Date) {
