@@ -442,6 +442,34 @@ export async function registerRoutes(
     }
   });
 
+  // Diagnostic endpoint to verify Golioth connection
+  app.get("/api/golioth-test", isAuthenticated, async (req: any, res) => {
+    const apiKey = process.env.GOLIOTH_API_KEY;
+    const projectId = process.env.GOLIOTH_PROJECT_ID;
+    if (!apiKey || !projectId) {
+      return res.json({ error: "Missing GOLIOTH_API_KEY or GOLIOTH_PROJECT_ID" });
+    }
+    try {
+      const projectUrl = `https://api.golioth.io/v1/projects/${projectId}`;
+      const projectRes = await fetch(projectUrl, { headers: { "x-api-key": apiKey } });
+      const projectBody = await projectRes.json();
+
+      const devicesUrl = `https://api.golioth.io/v1/projects/${projectId}/devices`;
+      const devicesRes = await fetch(devicesUrl, { headers: { "x-api-key": apiKey } });
+      const devicesBody = await devicesRes.json();
+
+      res.json({
+        projectId,
+        projectStatus: projectRes.status,
+        projectResponse: projectBody,
+        devicesStatus: devicesRes.status,
+        devicesResponse: devicesBody,
+      });
+    } catch (err: any) {
+      res.json({ error: err.message });
+    }
+  });
+
   app.get("/api/devices", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
