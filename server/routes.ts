@@ -318,28 +318,17 @@ export async function registerRoutes(
               .sort((a, b) => new Date(b.lastSeenAt!).getTime() - new Date(a.lastSeenAt!).getTime());
             if (sortedDevices.length > 0) {
               const goliothDeviceId = sortedDevices[0].goliothDeviceId;
-              // Try key-in-path format first: PUT /data/desired/solenoid with raw boolean body
-              const lightdbUrl = `https://api.golioth.io/v1/projects/${projectId}/devices/${goliothDeviceId}/data/desired/solenoid`;
+              // PUT /data/desired with {"solenoid": true/false}
+              const lightdbUrl = `https://api.golioth.io/v1/projects/${projectId}/devices/${goliothDeviceId}/data/desired`;
               const lightdbRes = await fetch(lightdbUrl, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-                body: JSON.stringify(solenoidValue),
+                body: JSON.stringify({ solenoid: solenoidValue }),
               });
               if (lightdbRes.ok) {
                 console.log(`Golioth LightDB: solenoid=${solenoidValue} on device ${goliothDeviceId}`);
               } else {
-                // Fallback: try whole-object format at /data/desired
-                const lightdbUrl2 = `https://api.golioth.io/v1/projects/${projectId}/devices/${goliothDeviceId}/data/desired`;
-                const lightdbRes2 = await fetch(lightdbUrl2, {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-                  body: JSON.stringify({ solenoid: solenoidValue }),
-                });
-                if (lightdbRes2.ok) {
-                  console.log(`Golioth LightDB (object): solenoid=${solenoidValue} on device ${goliothDeviceId}`);
-                } else {
-                  console.warn(`Golioth LightDB both formats failed: path=${lightdbRes.status} ${await lightdbRes.text()}, object=${lightdbRes2.status} ${await lightdbRes2.text()}`);
-                }
+                console.warn(`Golioth LightDB PUT failed: ${lightdbRes.status} ${await lightdbRes.text()}`);
               }
             } else {
               console.warn("Golioth LightDB: no claimed devices found for user");
