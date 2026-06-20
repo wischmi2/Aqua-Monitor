@@ -46,11 +46,13 @@ export default function History() {
 
   const selectedConfig = sensorOptions.find((s) => s.value === selectedSensor);
 
+  const useTimeFormat = ["60m", "6h", "12h", "24h"].includes(timeRange);
+
   const chartData = readings
     ?.filter((r) => r.sensorType === selectedSensor)
     .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
     .map((r) => ({
-      time: timeRange === "24h" ? formatTime(r.recordedAt) : formatDate(r.recordedAt),
+      time: useTimeFormat ? formatTime(r.recordedAt) : formatDate(r.recordedAt),
       value: r.value,
       fullTime: new Date(r.recordedAt).toLocaleString(),
     })) ?? [];
@@ -78,9 +80,12 @@ export default function History() {
 
         <Tabs value={timeRange} onValueChange={setTimeRange} className="w-full sm:w-auto">
           <TabsList>
+            <TabsTrigger value="60m" data-testid="tab-60m">60m</TabsTrigger>
+            <TabsTrigger value="6h" data-testid="tab-6h">6h</TabsTrigger>
+            <TabsTrigger value="12h" data-testid="tab-12h">12h</TabsTrigger>
             <TabsTrigger value="24h" data-testid="tab-24h">24h</TabsTrigger>
-            <TabsTrigger value="7d" data-testid="tab-7d">7 Days</TabsTrigger>
-            <TabsTrigger value="30d" data-testid="tab-30d">30 Days</TabsTrigger>
+            <TabsTrigger value="7d" data-testid="tab-7d">7d</TabsTrigger>
+            <TabsTrigger value="30d" data-testid="tab-30d">30d</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>

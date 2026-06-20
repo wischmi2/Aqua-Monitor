@@ -196,6 +196,15 @@ export async function registerRoutes(
       
       let since = new Date();
       switch (timeRange) {
+        case "60m":
+          since.setMinutes(since.getMinutes() - 60);
+          break;
+        case "6h":
+          since.setHours(since.getHours() - 6);
+          break;
+        case "12h":
+          since.setHours(since.getHours() - 12);
+          break;
         case "24h":
           since.setHours(since.getHours() - 24);
           break;
