@@ -312,8 +312,12 @@ export async function registerRoutes(
           // Write to LightDB State /data/desired
           try {
             const userDevices = await storage.getDevices(userId);
-            if (userDevices.length > 0) {
-              const goliothDeviceId = userDevices[0].goliothDeviceId;
+            // Use the most recently seen device (skip fake/test placeholder entries)
+            const sortedDevices = userDevices
+              .filter(d => d.lastSeenAt !== null)
+              .sort((a, b) => new Date(b.lastSeenAt!).getTime() - new Date(a.lastSeenAt!).getTime());
+            if (sortedDevices.length > 0) {
+              const goliothDeviceId = sortedDevices[0].goliothDeviceId;
               const lightdbUrl = `https://api.golioth.io/v1/projects/${projectId}/devices/${goliothDeviceId}/data/desired`;
               const lightdbRes = await fetch(lightdbUrl, {
                 method: "PUT",
