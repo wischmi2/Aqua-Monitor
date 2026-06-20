@@ -1,0 +1,1 @@
+- [Golioth LightDB State control](golioth-lightdb.md) — correct API endpoint and device ID strategy for solenoid control
