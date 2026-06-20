@@ -3,9 +3,12 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 import { 
   Flame, 
   Fan, 
@@ -13,7 +16,10 @@ import {
   Waves,
   Droplets,
   Power,
-  Droplet
+  Droplet,
+  Settings2,
+  Check,
+  X
 } from "lucide-react";
 import type { Equipment } from "@shared/schema";
 
@@ -56,8 +62,80 @@ function EquipmentSkeleton() {
   );
 }
 
+function DeviceConfigPanel({ eq, onClose }: { eq: Equipment; onClose: () => void }) {
+  const { toast } = useToast();
+  const [deviceId, setDeviceId] = useState(eq.goliothDeviceId ?? "");
+  const [key, setKey] = useState(eq.goliothKey ?? "");
+
+  const configMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PATCH", `/api/equipment/${eq.id}`, {
+        goliothDeviceId: deviceId.trim() || null,
+        goliothKey: key.trim() || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/equipment"] });
+      toast({ title: "Saved", description: "Device config updated" });
+      onClose();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save config", variant: "destructive" });
+    },
+  });
+
+  return (
+    <CardContent className="pt-0 border-t mt-1">
+      <div className="space-y-3 pt-3">
+        <p className="text-xs text-muted-foreground">Link this control to a Golioth device</p>
+        <div className="space-y-1">
+          <Label className="text-xs">Golioth Device ID</Label>
+          <Input
+            data-testid={`input-device-id-${eq.id}`}
+            placeholder="e.g. 6a34816d3f236bf1dbf8c75b"
+            value={deviceId}
+            onChange={e => setDeviceId(e.target.value)}
+            className="h-8 text-xs font-mono"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Command Key</Label>
+          <Input
+            data-testid={`input-command-key-${eq.id}`}
+            placeholder="e.g. solenoid, led, pump"
+            value={key}
+            onChange={e => setKey(e.target.value)}
+            className="h-8 text-xs"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            data-testid={`button-save-config-${eq.id}`}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => configMutation.mutate()}
+            disabled={configMutation.isPending}
+          >
+            <Check className="h-3 w-3 mr-1" /> Save
+          </Button>
+          <Button
+            data-testid={`button-cancel-config-${eq.id}`}
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs"
+            onClick={onClose}
+          >
+            <X className="h-3 w-3 mr-1" /> Cancel
+          </Button>
+        </div>
+      </div>
+    </CardContent>
+  );
+}
+
 export default function Controls() {
   const { toast } = useToast();
+  const [openConfig, setOpenConfig] = useState<number | null>(null);
 
   const { data: equipment, isLoading } = useQuery<Equipment[]>({
     queryKey: ["/api/equipment"],
@@ -119,6 +197,8 @@ export default function Controls() {
             const eq = equipmentMap.get(config.type);
             const isOn = eq?.isOn === 1;
             const value = eq?.value ?? 50;
+            const hasDeviceConfig = !!(eq?.goliothDeviceId && eq?.goliothKey);
+            const isConfigOpen = eq && openConfig === eq.id;
 
             return (
               <Card key={config.type}>
@@ -130,19 +210,35 @@ export default function Controls() {
                       </div>
                       <div>
                         <CardTitle className="text-base">{config.label}</CardTitle>
-                        <CardDescription className="text-sm">{config.description}</CardDescription>
+                        <CardDescription className="text-sm">
+                          {eq?.goliothDeviceId && eq?.goliothKey
+                            ? <span className="text-xs font-mono">{eq.goliothKey} → {eq.goliothDeviceId.slice(-6)}</span>
+                            : config.description}
+                        </CardDescription>
                       </div>
                     </div>
-                    <Switch
-                      checked={isOn}
-                      onCheckedChange={(checked) => {
-                        if (eq) {
-                          toggleMutation.mutate({ id: eq.id, isOn: checked });
-                        }
-                      }}
-                      disabled={!eq || toggleMutation.isPending}
-                      data-testid={`switch-${config.type}`}
-                    />
+                    <div className="flex items-center gap-2">
+                      {eq && (
+                        <button
+                          data-testid={`button-config-${config.type}`}
+                          onClick={() => setOpenConfig(isConfigOpen ? null : eq.id)}
+                          className={`p-1.5 rounded-md transition-colors ${isConfigOpen || hasDeviceConfig ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                          title="Configure Golioth device"
+                        >
+                          <Settings2 className="h-4 w-4" />
+                        </button>
+                      )}
+                      <Switch
+                        checked={isOn}
+                        onCheckedChange={(checked) => {
+                          if (eq) {
+                            toggleMutation.mutate({ id: eq.id, isOn: checked });
+                          }
+                        }}
+                        disabled={!eq || toggleMutation.isPending}
+                        data-testid={`switch-${config.type}`}
+                      />
+                    </div>
                   </div>
                 </CardHeader>
                 {config.hasSlider && isOn && eq && (
@@ -169,6 +265,9 @@ export default function Controls() {
                       />
                     </div>
                   </CardContent>
+                )}
+                {isConfigOpen && eq && (
+                  <DeviceConfigPanel eq={eq} onClose={() => setOpenConfig(null)} />
                 )}
               </Card>
             );

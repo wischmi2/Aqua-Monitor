@@ -302,75 +302,43 @@ export async function registerRoutes(
       
       const updated = await storage.updateEquipment(id, result.data);
 
-      // If this is water_control and isOn is being set, write solenoid state to Golioth
-      if (existingEquipment.type === "water_control" && result.data.isOn !== undefined) {
-        const solenoidValue = result.data.isOn === 1;
+      // If isOn is being toggled and equipment has a Golioth device configured, send command
+      if (result.data.isOn !== undefined) {
+        const isOnValue = result.data.isOn === 1;
         const apiKey = process.env.GOLIOTH_API_KEY;
         const projectId = process.env.GOLIOTH_PROJECT_ID;
 
         if (apiKey && projectId) {
-          // Write to LightDB State /data/desired
-          try {
+          // Determine target device and key
+          let targetDeviceId: string | null = updated.goliothDeviceId ?? null;
+          let targetKey: string | null = updated.goliothKey ?? null;
+
+          // Fallback for water_control without explicit config: use most recently seen real device
+          if (!targetDeviceId && existingEquipment.type === "water_control") {
             const userDevices = await storage.getDevices(userId);
-            // Only use real Golioth device IDs (24 hex chars), pick most recently seen
             const realDevices = userDevices
               .filter(d => /^[0-9a-f]{24}$/.test(d.goliothDeviceId))
               .sort((a, b) => new Date(b.lastSeenAt ?? 0).getTime() - new Date(a.lastSeenAt ?? 0).getTime());
-            if (realDevices.length > 0) {
-              const goliothDeviceId = realDevices[0].goliothDeviceId;
-              // PUT /data/desired with {"solenoid": true/false}
-              const lightdbUrl = `https://api.golioth.io/v1/projects/${projectId}/devices/${goliothDeviceId}/data/desired`;
+            if (realDevices.length > 0) targetDeviceId = realDevices[0].goliothDeviceId;
+            targetKey = "solenoid";
+          }
+
+          if (targetDeviceId && targetKey) {
+            try {
+              const lightdbUrl = `https://api.golioth.io/v1/projects/${projectId}/devices/${targetDeviceId}/data/desired`;
               const lightdbRes = await fetch(lightdbUrl, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-                body: JSON.stringify({ solenoid: solenoidValue }),
+                body: JSON.stringify({ [targetKey]: isOnValue }),
               });
               if (lightdbRes.ok) {
-                console.log(`Golioth LightDB: solenoid=${solenoidValue} on device ${goliothDeviceId}`);
+                console.log(`Golioth LightDB: ${targetKey}=${isOnValue} on device ${targetDeviceId}`);
               } else {
                 console.warn(`Golioth LightDB PUT failed: ${lightdbRes.status} ${await lightdbRes.text()}`);
               }
-            } else {
-              console.warn("Golioth LightDB: no claimed devices found for user");
+            } catch (lightdbErr) {
+              console.error("Error writing to Golioth LightDB:", lightdbErr);
             }
-          } catch (lightdbErr) {
-            console.error("Error writing to Golioth LightDB:", lightdbErr);
-          }
-
-          // Also keep Settings API in sync
-          try {
-            const settingsBase = `https://api.golioth.io/v1/projects/${projectId}/settings`;
-            const headers = { "Content-Type": "application/json", "x-api-key": apiKey };
-
-            const listRes = await fetch(settingsBase, { headers });
-            const listBody = await listRes.json() as { list?: { id: string; key: string }[] };
-            const existing = listBody.list?.find((s) => s.key === "SOLENOID_STATE");
-
-            if (existing) {
-              const patchRes = await fetch(`${settingsBase}/${existing.id}`, {
-                method: "PATCH",
-                headers,
-                body: JSON.stringify({ value: solenoidValue }),
-              });
-              if (patchRes.ok) {
-                console.log(`Golioth Settings: updated SOLENOID_STATE=${solenoidValue}`);
-              } else {
-                console.warn(`Golioth Settings PATCH failed: ${patchRes.status} ${await patchRes.text()}`);
-              }
-            } else {
-              const postRes = await fetch(settingsBase, {
-                method: "POST",
-                headers,
-                body: JSON.stringify({ key: "SOLENOID_STATE", value: solenoidValue, dataType: "boolean" }),
-              });
-              if (postRes.ok) {
-                console.log(`Golioth Settings: created SOLENOID_STATE=${solenoidValue}`);
-              } else {
-                console.warn(`Golioth Settings POST failed: ${postRes.status} ${await postRes.text()}`);
-              }
-            }
-          } catch (goliothErr) {
-            console.error("Error writing to Golioth Settings:", goliothErr);
           }
         } else {
           console.warn("GOLIOTH_API_KEY or GOLIOTH_PROJECT_ID not set — skipping Golioth write");
