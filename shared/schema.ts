@@ -88,6 +88,8 @@ export const equipment = pgTable("equipment", {
   value: real("value"),
   minValue: real("min_value"),
   maxValue: real("max_value"),
+  goliothDeviceId: text("golioth_device_id"),
+  goliothKey: text("golioth_key"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
