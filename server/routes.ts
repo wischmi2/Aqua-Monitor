@@ -314,6 +314,7 @@ export async function registerRoutes(
           for (const device of userDevices) {
             try {
               const goliothUrl = `https://api.golioth.io/v1/projects/${projectId}/devices/${device.goliothDeviceId}/lightdb/desired/solenoid`;
+              console.log(`Golioth LightDB write URL: ${goliothUrl}`);
               const goliothRes = await fetch(goliothUrl, {
                 method: "PUT",
                 headers: {
