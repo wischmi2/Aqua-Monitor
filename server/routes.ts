@@ -312,9 +312,10 @@ export async function registerRoutes(
           // Write to LightDB State /data/desired
           try {
             const userDevices = await storage.getDevices(userId);
-            // Only use real Golioth device IDs (24 hex chars), skip fake test entries
+            // Only use real Golioth device IDs (24 hex chars), pick most recently seen
             const realDevices = userDevices
-              .filter(d => /^[0-9a-f]{24}$/.test(d.goliothDeviceId));
+              .filter(d => /^[0-9a-f]{24}$/.test(d.goliothDeviceId))
+              .sort((a, b) => new Date(b.lastSeenAt ?? 0).getTime() - new Date(a.lastSeenAt ?? 0).getTime());
             if (realDevices.length > 0) {
               const goliothDeviceId = realDevices[0].goliothDeviceId;
               // PUT /data/desired with {"solenoid": true/false}
