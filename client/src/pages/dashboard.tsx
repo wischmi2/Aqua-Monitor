@@ -10,8 +10,9 @@ import {
   Wind,
   Beaker,
   TestTube,
-  Waves,
-  Droplet
+  Droplet,
+  AlertTriangle,
+  CheckCircle2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SensorReading } from "@shared/schema";
@@ -34,7 +35,6 @@ const sensorConfigs: SensorConfig[] = [
   { type: "nitrite", label: "Nitrite", icon: TestTube, unit: "ppm", normalRange: [0, 0.02], warningRange: [0, 0.1] },
   { type: "nitrate", label: "Nitrate", icon: Beaker, unit: "ppm", normalRange: [0, 20], warningRange: [0, 40] },
   { type: "dissolved_oxygen", label: "Dissolved O2", icon: Wind, unit: "mg/L", normalRange: [6, 8], warningRange: [5, 10] },
-  { type: "water_present", label: "Water Present", icon: Waves, unit: "", normalRange: [1, 1], warningRange: [0, 1] },
 ];
 
 function getStatus(value: number, config: SensorConfig): SensorStatus {
@@ -76,6 +76,67 @@ interface WaterFlowCardProps {
   flowRate: number;
   totalFlow: number;
   lastUpdated: string;
+}
+
+interface WaterDetectorCardProps {
+  detected: boolean;
+  hasData: boolean;
+  lastUpdated: string;
+}
+
+function WaterDetectorCard({ detected, hasData, lastUpdated }: WaterDetectorCardProps) {
+  return (
+    <Card
+      data-testid="sensor-water-detector"
+      className={cn(
+        "transition-all duration-500",
+        detected && "border-red-500 shadow-md shadow-red-500/20"
+      )}
+    >
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className={cn(
+              "relative p-2 rounded-md transition-colors",
+              detected ? "bg-red-100 dark:bg-red-950" : "bg-muted"
+            )}>
+              {detected ? (
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              )}
+              {detected && (
+                <div className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-red-500 animate-pulse" />
+              )}
+            </div>
+            <span className="text-sm font-medium">Water Detector</span>
+          </div>
+          <span className={cn(
+            "text-xs font-semibold px-2 py-0.5 rounded-full",
+            detected
+              ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400"
+              : "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400"
+          )}>
+            {!hasData ? "No data" : detected ? "DETECTED" : "Clear"}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span
+            className={cn(
+              "text-3xl font-mono font-medium tracking-tight",
+              detected ? "text-red-500" : "text-green-500"
+            )}
+            data-testid="sensor-water-detector-value"
+          >
+            {!hasData ? "—" : detected ? "Water Present" : "No Water"}
+          </span>
+        </div>
+
+        <p className="text-xs text-muted-foreground">Updated {lastUpdated}</p>
+      </CardContent>
+    </Card>
+  );
 }
 
 const MAX_DISPLAY_GPM = 2.64172; // ~10 L/min in GPM
@@ -233,6 +294,16 @@ export default function Dashboard() {
                   flowRate={rateReading?.value ?? 0}
                   totalFlow={totalReading?.value ?? 0}
                   lastUpdated={lastSeen ? getTimeAgo(new Date(lastSeen)) : "No data"}
+                />
+              );
+            })()}
+            {(() => {
+              const detectorReading = sensorDataMap.get("water_present");
+              return (
+                <WaterDetectorCard
+                  detected={detectorReading ? detectorReading.value >= 1 : false}
+                  hasData={!!detectorReading}
+                  lastUpdated={detectorReading ? getTimeAgo(new Date(detectorReading.recordedAt)) : "No data"}
                 />
               );
             })()}
