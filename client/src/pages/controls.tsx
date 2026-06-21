@@ -34,13 +34,13 @@ interface EquipmentConfig {
 }
 
 const equipmentConfigs: EquipmentConfig[] = [
+  { type: "water_control", label: "Water Control", description: "Solenoid valve — sends open/close to device", icon: Droplet },
   { type: "heater", label: "Heater", description: "Maintain water temperature", icon: Flame },
   { type: "filter", label: "Filter Pump", description: "Water filtration system", icon: Fan },
   { type: "lights", label: "Tank Lights", description: "LED lighting system", icon: Lightbulb, hasSlider: true, sliderLabel: "Brightness", sliderUnit: "%" },
   { type: "wavemaker", label: "Wave Maker", description: "Water circulation pump", icon: Waves, hasSlider: true, sliderLabel: "Flow Rate", sliderUnit: "%" },
   { type: "skimmer", label: "Protein Skimmer", description: "Remove organic waste", icon: Droplets },
   { type: "powerhead", label: "Powerhead", description: "Additional water flow", icon: Power },
-  { type: "water_control", label: "Water Control", description: "Solenoid valve — sends open/close to device", icon: Droplet },
 ];
 
 function EquipmentSkeleton() {
