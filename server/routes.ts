@@ -456,12 +456,13 @@ export async function registerRoutes(
         }
       }
 
-      // Auto-shutoff: if water detected, turn off water_control if it's on
+      // Auto-shutoff: if water detected, always force water_control off and send Golioth command
+      // (always fires regardless of DB state — physical device may be out of sync)
       if (waterDetected && device.userId) {
         const waterControl = await storage.getEquipmentByType(device.userId, "water_control");
-        if (waterControl && waterControl.isOn === 1) {
+        if (waterControl) {
           await storage.updateEquipment(waterControl.id, { isOn: 0 });
-          console.log(`Auto-shutoff: water detected — turned off water_control for user ${device.userId}`);
+          console.log(`Auto-shutoff: water detected — forced water_control OFF for user ${device.userId} (was isOn=${waterControl.isOn})`);
 
           const apiKey = process.env.GOLIOTH_API_KEY;
           const projectId = process.env.GOLIOTH_PROJECT_ID;
