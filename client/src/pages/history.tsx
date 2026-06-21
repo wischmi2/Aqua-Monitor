@@ -33,7 +33,7 @@ function formatTime(dateStr: string | Date) {
 }
 
 export default function History() {
-  const [selectedSensor, setSelectedSensor] = useState("temperature");
+  const [selectedSensor, setSelectedSensor] = useState("flow_rate_lpm");
   const [timeRange, setTimeRange] = useState("24h");
 
   const { data: readings, isLoading } = useQuery<SensorReading[]>({
