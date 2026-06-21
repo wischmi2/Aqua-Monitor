@@ -404,10 +404,12 @@ export async function registerRoutes(
       if ((payload as any).value && typeof (payload as any).value === "object") console.log("value keys:", Object.keys((payload as any).value));
       console.log("Full payload:", JSON.stringify(payload, null, 2));
 
+      // Golioth CloudEvents format sends device ID in ce-source header, not always in body
       const goliothDeviceId = payload.deviceId || payload.device_id
         || (dataObj as any)?.deviceId
-        || (payload as any)?.value?.deviceId;
-      console.log("Extracted device ID:", goliothDeviceId);
+        || (payload as any)?.value?.deviceId
+        || (req.headers["ce-source"] as string);
+      console.log("Extracted device ID:", goliothDeviceId, "(ce-source header:", req.headers["ce-source"], ")");
       
       if (!goliothDeviceId) {
         console.warn("Golioth webhook: No device ID in payload");
