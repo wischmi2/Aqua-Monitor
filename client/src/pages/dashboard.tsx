@@ -260,31 +260,6 @@ export default function Dashboard() {
           </>
         ) : (
           <>
-            {sensorConfigs.map((config) => {
-              const reading = sensorDataMap.get(config.type);
-              const value = reading?.value ?? 0;
-              const status = getStatus(value, config);
-              const lastUpdated = reading?.recordedAt 
-                ? getTimeAgo(new Date(reading.recordedAt))
-                : "No data";
-
-              const displayValue = config.type === "water_present" 
-                ? (value >= 1 ? "Yes" : "No")
-                : value;
-
-              return (
-                <SensorCard
-                  key={config.type}
-                  icon={config.icon}
-                  label={config.label}
-                  value={displayValue}
-                  unit={config.unit}
-                  status={status}
-                  lastUpdated={lastUpdated}
-                  testId={`sensor-${config.type}`}
-                />
-              );
-            })}
             {(() => {
               const rateReading = sensorDataMap.get("flow_rate_lpm");
               const totalReading = sensorDataMap.get("flow_liters");
@@ -307,6 +282,27 @@ export default function Dashboard() {
                 />
               );
             })()}
+            {sensorConfigs.map((config) => {
+              const reading = sensorDataMap.get(config.type);
+              const value = reading?.value ?? 0;
+              const status = getStatus(value, config);
+              const lastUpdated = reading?.recordedAt 
+                ? getTimeAgo(new Date(reading.recordedAt))
+                : "No data";
+
+              return (
+                <SensorCard
+                  key={config.type}
+                  icon={config.icon}
+                  label={config.label}
+                  value={value}
+                  unit={config.unit}
+                  status={status}
+                  lastUpdated={lastUpdated}
+                  testId={`sensor-${config.type}`}
+                />
+              );
+            })}
           </>
         )}
       </div>
