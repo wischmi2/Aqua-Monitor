@@ -298,6 +298,8 @@ export async function registerRoutes(
   const updateEquipmentSchema = z.object({
     isOn: z.number().min(0).max(1).optional(),
     value: z.number().min(0).max(100).optional(),
+    goliothDeviceId: z.string().nullable().optional(),
+    goliothKey: z.string().nullable().optional(),
   });
 
   app.patch("/api/equipment/:id", isAuthenticated, async (req: any, res) => {

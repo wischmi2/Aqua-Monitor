@@ -1,7 +1,13 @@
 import { SensorCard, type SensorStatus } from "@/components/sensor-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useQuery } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 import { 
   Thermometer, 
   Gauge, 
@@ -12,10 +18,13 @@ import {
   TestTube,
   Droplet,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  Settings2,
+  Check,
+  X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SensorReading } from "@shared/schema";
+import type { SensorReading, Equipment } from "@shared/schema";
 import { useFlowUnit } from "@/hooks/use-flow-unit";
 
 interface SensorConfig {
@@ -72,19 +81,87 @@ function SensorSkeleton() {
   );
 }
 
+function DeviceConfigPanel({ eq, onClose }: { eq: Equipment; onClose: () => void }) {
+  const { toast } = useToast();
+  const [deviceId, setDeviceId] = useState(eq.goliothDeviceId ?? "");
+  const [key, setKey] = useState(eq.goliothKey ?? "");
+
+  const configMutation = useMutation({
+    mutationFn: async () =>
+      apiRequest("PATCH", `/api/equipment/${eq.id}`, {
+        goliothDeviceId: deviceId.trim() || null,
+        goliothKey: key.trim() || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/equipment"] });
+      toast({ title: "Saved", description: "Device config updated" });
+      onClose();
+    },
+    onError: () => toast({ title: "Error", description: "Failed to save config", variant: "destructive" }),
+  });
+
+  return (
+    <div className="border-t mt-1 pt-3 px-4 pb-3 space-y-3">
+      <p className="text-xs text-muted-foreground">Link this sensor to a Golioth device</p>
+      <div className="space-y-1">
+        <Label className="text-xs">Golioth Device ID</Label>
+        <Input
+          data-testid={`input-device-id-${eq.id}`}
+          placeholder="e.g. 6a34816d3f236bf1dbf8c75b"
+          value={deviceId}
+          onChange={e => setDeviceId(e.target.value)}
+          className="h-8 text-xs font-mono"
+        />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Command Key</Label>
+        <Input
+          data-testid={`input-command-key-${eq.id}`}
+          placeholder="e.g. solenoid"
+          value={key}
+          onChange={e => setKey(e.target.value)}
+          className="h-8 text-xs"
+        />
+      </div>
+      <div className="flex gap-2">
+        <Button
+          data-testid={`button-save-config-${eq.id}`}
+          size="sm" className="h-7 text-xs"
+          onClick={() => configMutation.mutate()}
+          disabled={configMutation.isPending}
+        >
+          <Check className="h-3 w-3 mr-1" /> Save
+        </Button>
+        <Button
+          data-testid={`button-cancel-config-${eq.id}`}
+          size="sm" variant="ghost" className="h-7 text-xs"
+          onClick={onClose}
+        >
+          <X className="h-3 w-3 mr-1" /> Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 interface WaterFlowCardProps {
   flowRate: number;
   totalFlow: number;
   lastUpdated: string;
+  equipment?: Equipment;
 }
 
 interface WaterDetectorCardProps {
   detected: boolean;
   hasData: boolean;
   lastUpdated: string;
+  equipment?: Equipment;
 }
 
-function WaterDetectorCard({ detected, hasData, lastUpdated }: WaterDetectorCardProps) {
+function WaterDetectorCard({ detected, hasData, lastUpdated, equipment }: WaterDetectorCardProps) {
+  const [configOpen, setConfigOpen] = useState(false);
+  const hasDeviceConfig = !!(equipment?.goliothDeviceId && equipment?.goliothKey);
+
   return (
     <Card
       data-testid="sensor-water-detector"
@@ -111,14 +188,26 @@ function WaterDetectorCard({ detected, hasData, lastUpdated }: WaterDetectorCard
             </div>
             <span className="text-sm font-medium">Water Detector</span>
           </div>
-          <span className={cn(
-            "text-xs font-semibold px-2 py-0.5 rounded-full",
-            detected
-              ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400"
-              : "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400"
-          )}>
-            {!hasData ? "No data" : detected ? "DETECTED" : "Clear"}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              "text-xs font-semibold px-2 py-0.5 rounded-full",
+              detected
+                ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400"
+                : "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400"
+            )}>
+              {!hasData ? "No data" : detected ? "DETECTED" : "Clear"}
+            </span>
+            {equipment && (
+              <button
+                data-testid="button-config-water-detector"
+                onClick={() => setConfigOpen(o => !o)}
+                className={cn("p-1 rounded-md transition-colors", configOpen || hasDeviceConfig ? "text-primary" : "text-muted-foreground hover:text-foreground")}
+                title="Configure Golioth device"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -135,19 +224,24 @@ function WaterDetectorCard({ detected, hasData, lastUpdated }: WaterDetectorCard
 
         <p className="text-xs text-muted-foreground">Updated {lastUpdated}</p>
       </CardContent>
+      {configOpen && equipment && (
+        <DeviceConfigPanel eq={equipment} onClose={() => setConfigOpen(false)} />
+      )}
     </Card>
   );
 }
 
 const MAX_DISPLAY_GPM = 2.64172; // ~10 L/min in GPM
 
-function WaterFlowCard({ flowRate, totalFlow, lastUpdated }: WaterFlowCardProps) {
+function WaterFlowCard({ flowRate, totalFlow, lastUpdated, equipment }: WaterFlowCardProps) {
   const { unit, setUnit, convertRate, convertVolume, rateUnit, volumeUnit } = useFlowUnit();
+  const [configOpen, setConfigOpen] = useState(false);
   const displayRate = convertRate(flowRate);
   const displayTotal = convertVolume(totalFlow);
   const maxDisplay = unit === "gallons" ? MAX_DISPLAY_GPM : 10;
   const pct = Math.min(100, (displayRate / maxDisplay) * 100);
   const isFlowing = flowRate > 0;
+  const hasDeviceConfig = !!(equipment?.goliothDeviceId && equipment?.goliothKey);
 
   return (
     <Card data-testid="sensor-flow">
@@ -177,6 +271,16 @@ function WaterFlowCard({ flowRate, totalFlow, lastUpdated }: WaterFlowCardProps)
             >
               {unit === "gallons" ? "gal" : "L"}
             </button>
+            {equipment && (
+              <button
+                data-testid="button-config-water-flow"
+                onClick={() => setConfigOpen(o => !o)}
+                className={cn("p-1 rounded-md transition-colors", configOpen || hasDeviceConfig ? "text-primary" : "text-muted-foreground hover:text-foreground")}
+                title="Configure Golioth device"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -214,6 +318,9 @@ function WaterFlowCard({ flowRate, totalFlow, lastUpdated }: WaterFlowCardProps)
           <span>Updated {lastUpdated}</span>
         </div>
       </CardContent>
+      {configOpen && equipment && (
+        <DeviceConfigPanel eq={equipment} onClose={() => setConfigOpen(false)} />
+      )}
     </Card>
   );
 }
@@ -223,6 +330,13 @@ export default function Dashboard() {
     queryKey: ["/api/sensors/latest"],
     refetchInterval: 30000,
   });
+
+  const { data: equipment } = useQuery<Equipment[]>({
+    queryKey: ["/api/equipment"],
+  });
+
+  const equipmentMap = new Map<string, Equipment>();
+  equipment?.forEach(eq => equipmentMap.set(eq.type, eq));
 
   const sensorDataMap = new Map<string, SensorReading>();
   readings?.forEach((reading) => {
@@ -269,6 +383,7 @@ export default function Dashboard() {
                   flowRate={rateReading?.value ?? 0}
                   totalFlow={totalReading?.value ?? 0}
                   lastUpdated={lastSeen ? getTimeAgo(new Date(lastSeen)) : "No data"}
+                  equipment={equipmentMap.get("water_control")}
                 />
               );
             })()}
@@ -279,6 +394,7 @@ export default function Dashboard() {
                   detected={detectorReading ? detectorReading.value >= 1 : false}
                   hasData={!!detectorReading}
                   lastUpdated={detectorReading ? getTimeAgo(new Date(detectorReading.recordedAt)) : "No data"}
+                  equipment={equipmentMap.get("water_control")}
                 />
               );
             })()}
