@@ -427,6 +427,7 @@ export async function registerRoutes(
 
       const storedReadings: string[] = [];
       const receivedReadings: string[] = [];
+      let waterDetected = false;
 
       // Process all sensor types
       for (const mapping of SENSOR_MAPPINGS) {
@@ -443,10 +444,58 @@ export async function registerRoutes(
             });
             storedReadings.push(`${mapping.sensorType}: ${value}${mapping.unit}`);
             
+            if (mapping.sensorType === "water_present" && value >= 1) {
+              waterDetected = true;
+            }
+
             // Check alerts and send SMS if needed
             await checkAndSendAlerts(device.userId, mapping.sensorType, value, mapping.unit);
           } else {
             receivedReadings.push(`${mapping.sensorType}: ${value}${mapping.unit}`);
+          }
+        }
+      }
+
+      // Auto-shutoff: if water detected, turn off water_control if it's on
+      if (waterDetected && device.userId) {
+        const waterControl = await storage.getEquipmentByType(device.userId, "water_control");
+        if (waterControl && waterControl.isOn === 1) {
+          await storage.updateEquipment(waterControl.id, { isOn: 0 });
+          console.log(`Auto-shutoff: water detected — turned off water_control for user ${device.userId}`);
+
+          const apiKey = process.env.GOLIOTH_API_KEY;
+          const projectId = process.env.GOLIOTH_PROJECT_ID;
+          if (apiKey && projectId) {
+            let targetDeviceId: string | null = waterControl.goliothDeviceId ?? null;
+            let targetKey: string | null = waterControl.goliothKey ?? null;
+
+            // Fallback: use most recently seen device with "solenoid" key
+            if (!targetDeviceId) {
+              const userDevices = await storage.getDevices(device.userId);
+              const realDevices = userDevices
+                .filter(d => /^[0-9a-f]{24}$/.test(d.goliothDeviceId))
+                .sort((a, b) => new Date(b.lastSeenAt ?? 0).getTime() - new Date(a.lastSeenAt ?? 0).getTime());
+              if (realDevices.length > 0) targetDeviceId = realDevices[0].goliothDeviceId;
+              targetKey = "solenoid";
+            }
+
+            if (targetDeviceId && targetKey) {
+              try {
+                const lightdbUrl = `https://api.golioth.io/v1/projects/${projectId}/devices/${targetDeviceId}/data/desired`;
+                const lightdbRes = await fetch(lightdbUrl, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+                  body: JSON.stringify({ [targetKey]: false }),
+                });
+                if (lightdbRes.ok) {
+                  console.log(`Auto-shutoff: Golioth LightDB ${targetKey}=false sent to device ${targetDeviceId}`);
+                } else {
+                  console.warn(`Auto-shutoff: Golioth LightDB PUT failed: ${lightdbRes.status} ${await lightdbRes.text()}`);
+                }
+              } catch (lightdbErr) {
+                console.error("Auto-shutoff: Error writing to Golioth LightDB:", lightdbErr);
+              }
+            }
           }
         }
       }
