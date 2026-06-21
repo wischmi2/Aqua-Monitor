@@ -470,14 +470,15 @@ export async function registerRoutes(
             let targetDeviceId: string | null = waterControl.goliothDeviceId ?? null;
             let targetKey: string | null = waterControl.goliothKey ?? null;
 
-            // Fallback: use most recently seen device with "solenoid" key
+            // Fallback: use most recently seen device OTHER than the water detector that triggered this
             if (!targetDeviceId) {
               const userDevices = await storage.getDevices(device.userId);
               const realDevices = userDevices
-                .filter(d => /^[0-9a-f]{24}$/.test(d.goliothDeviceId))
+                .filter(d => /^[0-9a-f]{24}$/.test(d.goliothDeviceId) && d.goliothDeviceId !== goliothDeviceId)
                 .sort((a, b) => new Date(b.lastSeenAt ?? 0).getTime() - new Date(a.lastSeenAt ?? 0).getTime());
               if (realDevices.length > 0) targetDeviceId = realDevices[0].goliothDeviceId;
               targetKey = "solenoid";
+              console.log(`Auto-shutoff: fallback device selected: ${targetDeviceId} (excluded triggering device ${goliothDeviceId})`);
             }
 
             if (targetDeviceId && targetKey) {
