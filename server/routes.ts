@@ -156,17 +156,27 @@ function toNumber(value: any): number | undefined {
 }
 
 // Helper function to extract sensor value from payload
+// Golioth can nest the device data in several ways depending on pipeline config:
+//   1. Root level:            payload.water_detected
+//   2. data object:           payload.data.water_detected
+//   3. data.value (LightDB Stream + inject-metadata): payload.data.value.water_detected
+//   4. value object (no inject-metadata):             payload.value.water_detected
 function extractSensorValue(payload: any, dataObj: any, fieldNames: string[]): number | undefined {
+  // Build the list of candidate objects to search, in priority order
+  const candidates: any[] = [
+    payload,                          // root level
+    dataObj,                          // payload.data
+    dataObj?.value,                   // payload.data.value  ← LightDB Stream + inject-metadata
+    payload?.value,                   // payload.value       ← no inject-metadata
+    dataObj?.data,                    // payload.data.data
+  ].filter(Boolean);
+
   for (const fieldName of fieldNames) {
-    // Check root level first
-    if (payload[fieldName] !== undefined) {
-      const numValue = toNumber(payload[fieldName]);
-      if (numValue !== undefined) return numValue;
-    }
-    // Check nested data object
-    if (dataObj && dataObj[fieldName] !== undefined) {
-      const numValue = toNumber(dataObj[fieldName]);
-      if (numValue !== undefined) return numValue;
+    for (const obj of candidates) {
+      if (obj[fieldName] !== undefined) {
+        const numValue = toNumber(obj[fieldName]);
+        if (numValue !== undefined) return numValue;
+      }
     }
   }
   return undefined;
@@ -386,8 +396,17 @@ export async function registerRoutes(
       }
 
       const payload = result.data;
-      console.log("Parsed payload:", JSON.stringify(payload, null, 2));
-      const goliothDeviceId = payload.deviceId || payload.device_id || (payload.data as any)?.deviceId;
+      const dataObj = payload.data as any;
+      // Log structure summary to help diagnose format issues
+      console.log("Payload keys:", Object.keys(payload));
+      if (dataObj) console.log("data keys:", Object.keys(dataObj));
+      if (dataObj?.value && typeof dataObj.value === "object") console.log("data.value keys:", Object.keys(dataObj.value));
+      if ((payload as any).value && typeof (payload as any).value === "object") console.log("value keys:", Object.keys((payload as any).value));
+      console.log("Full payload:", JSON.stringify(payload, null, 2));
+
+      const goliothDeviceId = payload.deviceId || payload.device_id
+        || (dataObj as any)?.deviceId
+        || (payload as any)?.value?.deviceId;
       console.log("Extracted device ID:", goliothDeviceId);
       
       if (!goliothDeviceId) {
@@ -404,7 +423,6 @@ export async function registerRoutes(
 
       await storage.updateDeviceLastSeen(device.id);
 
-      const dataObj = payload.data as any;
       const storedReadings: string[] = [];
       const receivedReadings: string[] = [];
 
