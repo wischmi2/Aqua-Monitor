@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SensorReading } from "@shared/schema";
+import { useFlowUnit } from "@/hooks/use-flow-unit";
 
 interface SensorConfig {
   type: string;
@@ -77,10 +78,14 @@ interface WaterFlowCardProps {
   lastUpdated: string;
 }
 
-const MAX_DISPLAY_LPM = 10;
+const MAX_DISPLAY_GPM = 2.64172; // ~10 L/min in GPM
 
 function WaterFlowCard({ flowRate, totalFlow, lastUpdated }: WaterFlowCardProps) {
-  const pct = Math.min(100, (flowRate / MAX_DISPLAY_LPM) * 100);
+  const { unit, setUnit, convertRate, convertVolume, rateUnit, volumeUnit } = useFlowUnit();
+  const displayRate = convertRate(flowRate);
+  const displayTotal = convertVolume(totalFlow);
+  const maxDisplay = unit === "gallons" ? MAX_DISPLAY_GPM : 10;
+  const pct = Math.min(100, (displayRate / maxDisplay) * 100);
   const isFlowing = flowRate > 0;
 
   return (
@@ -99,18 +104,28 @@ function WaterFlowCard({ flowRate, totalFlow, lastUpdated }: WaterFlowCardProps)
             </div>
             <span className="text-sm font-medium">Water Flow</span>
           </div>
-          <span className="text-xs font-medium text-muted-foreground px-2 py-0.5 rounded-full bg-muted">
-            {isFlowing ? "flowing" : "idle"}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground px-2 py-0.5 rounded-full bg-muted">
+              {isFlowing ? "flowing" : "idle"}
+            </span>
+            <button
+              data-testid="button-flow-unit-toggle"
+              onClick={() => setUnit(unit === "gallons" ? "liters" : "gallons")}
+              className="text-xs font-medium px-2 py-0.5 rounded-full border border-border bg-background hover:bg-muted transition-colors"
+              title="Switch unit"
+            >
+              {unit === "gallons" ? "gal" : "L"}
+            </button>
+          </div>
         </div>
 
         <div className="space-y-1.5">
           <div className="flex items-baseline justify-between gap-1">
             <div className="flex items-baseline gap-1">
               <span className="text-3xl font-mono font-medium tracking-tight" data-testid="sensor-flow-rate-value">
-                {flowRate.toFixed(2)}
+                {displayRate.toFixed(2)}
               </span>
-              <span className="text-sm text-muted-foreground">L/min</span>
+              <span className="text-sm text-muted-foreground">{rateUnit}</span>
             </div>
           </div>
           <div className="relative h-3 w-full rounded-full bg-muted overflow-hidden">
@@ -133,7 +148,7 @@ function WaterFlowCard({ flowRate, totalFlow, lastUpdated }: WaterFlowCardProps)
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
-            Total: <span className="font-mono font-medium text-foreground" data-testid="sensor-flow-total">{totalFlow.toFixed(3)} L</span>
+            Total: <span className="font-mono font-medium text-foreground" data-testid="sensor-flow-total">{displayTotal.toFixed(3)} {volumeUnit}</span>
           </span>
           <span>Updated {lastUpdated}</span>
         </div>

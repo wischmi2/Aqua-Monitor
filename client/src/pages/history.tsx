@@ -6,6 +6,9 @@ import { useQuery } from "@tanstack/react-query";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useState } from "react";
 import type { SensorReading } from "@shared/schema";
+import { useFlowUnit } from "@/hooks/use-flow-unit";
+
+const FLOW_SENSOR_TYPES = ["flow_rate_lpm", "flow_liters"];
 
 const sensorOptions = [
   { value: "temperature", label: "Temperature", unit: "°F", color: "hsl(var(--chart-1))" },
@@ -44,7 +47,22 @@ export default function History() {
     },
   });
 
+  const { unit, setUnit, convertRate, convertVolume, rateUnit, volumeUnit } = useFlowUnit();
+  const isFlowSensor = FLOW_SENSOR_TYPES.includes(selectedSensor);
+
   const selectedConfig = sensorOptions.find((s) => s.value === selectedSensor);
+
+  function getDisplayUnit() {
+    if (selectedSensor === "flow_rate_lpm") return rateUnit;
+    if (selectedSensor === "flow_liters") return volumeUnit;
+    return selectedConfig?.unit ?? "";
+  }
+
+  function convertValue(raw: number) {
+    if (selectedSensor === "flow_rate_lpm") return convertRate(raw);
+    if (selectedSensor === "flow_liters") return convertVolume(raw);
+    return raw;
+  }
 
   const useTimeFormat = ["60m", "6h", "12h", "24h"].includes(timeRange);
 
@@ -53,7 +71,7 @@ export default function History() {
     .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
     .map((r) => ({
       time: useTimeFormat ? formatTime(r.recordedAt) : formatDate(r.recordedAt),
-      value: r.value,
+      value: convertValue(r.value),
       fullTime: new Date(r.recordedAt).toLocaleString(),
     })) ?? [];
 
@@ -92,9 +110,21 @@ export default function History() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">
-            {selectedConfig?.label} History
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">
+              {selectedConfig?.label} History
+            </CardTitle>
+            {isFlowSensor && (
+              <button
+                data-testid="button-flow-unit-toggle-history"
+                onClick={() => setUnit(unit === "gallons" ? "liters" : "gallons")}
+                className="text-xs font-medium px-2 py-1 rounded-md border border-border bg-background hover:bg-muted transition-colors"
+                title="Switch unit"
+              >
+                {unit === "gallons" ? "gal" : "L"}
+              </button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -116,7 +146,7 @@ export default function History() {
                   <YAxis 
                     className="text-xs fill-muted-foreground"
                     tick={{ fontSize: 12 }}
-                    unit={` ${selectedConfig?.unit}`}
+                    unit={` ${getDisplayUnit()}`}
                     width={60}
                   />
                   <Tooltip
@@ -126,7 +156,7 @@ export default function History() {
                           <div className="bg-popover border border-border rounded-md p-2 shadow-md">
                             <p className="text-xs text-muted-foreground">{payload[0].payload.fullTime}</p>
                             <p className="text-sm font-medium">
-                              {payload[0].value} {selectedConfig?.unit}
+                              {payload[0].value} {getDisplayUnit()}
                             </p>
                           </div>
                         );
