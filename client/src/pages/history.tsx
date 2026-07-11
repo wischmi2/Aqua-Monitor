@@ -13,9 +13,9 @@ const FLOW_SENSOR_TYPES = ["flow_rate_lpm", "flow_liters"];
 const sensorOptions = [
   { value: "flow_rate_lpm", label: "Water Flow", unit: "L/min", color: "hsl(var(--chart-3))" },
   { value: "flow_liters", label: "Total Flow", unit: "L", color: "hsl(var(--chart-4))" },
+  { value: "ph", label: "pH Level", unit: "pH", color: "hsl(var(--chart-3))" },
   { value: "temperature", label: "Temperature", unit: "°F", color: "hsl(var(--chart-1))" },
   { value: "salinity", label: "Salinity", unit: "ppt", color: "hsl(var(--chart-2))" },
-  { value: "ph", label: "pH Level", unit: "pH", color: "hsl(var(--chart-3))" },
   { value: "ammonia", label: "Ammonia", unit: "ppm", color: "hsl(var(--chart-4))" },
   { value: "nitrite", label: "Nitrite", unit: "ppm", color: "hsl(var(--chart-5))" },
   { value: "nitrate", label: "Nitrate", unit: "ppm", color: "hsl(var(--chart-1))" },
