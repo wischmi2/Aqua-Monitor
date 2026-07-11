@@ -37,9 +37,9 @@ interface SensorConfig {
 }
 
 const sensorConfigs: SensorConfig[] = [
+  { type: "ph", label: "pH Level", icon: Activity, unit: "pH", normalRange: [8.1, 8.4], warningRange: [7.8, 8.6] },
   { type: "temperature", label: "Temperature", icon: Thermometer, unit: "°F", normalRange: [76, 82], warningRange: [74, 84] },
   { type: "salinity", label: "Salinity", icon: Gauge, unit: "ppt", normalRange: [34, 36], warningRange: [32, 38] },
-  { type: "ph", label: "pH Level", icon: Activity, unit: "pH", normalRange: [8.1, 8.4], warningRange: [7.8, 8.6] },
   { type: "ammonia", label: "Ammonia", icon: Droplets, unit: "ppm", normalRange: [0, 0.02], warningRange: [0, 0.05] },
   { type: "nitrite", label: "Nitrite", icon: TestTube, unit: "ppm", normalRange: [0, 0.02], warningRange: [0, 0.1] },
   { type: "nitrate", label: "Nitrate", icon: Beaker, unit: "ppm", normalRange: [0, 20], warningRange: [0, 40] },
