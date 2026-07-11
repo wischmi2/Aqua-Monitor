@@ -99,7 +99,12 @@ const SENSOR_MAPPINGS = [
   { 
     sensorType: "temperature", 
     unit: "°F", 
-    fieldNames: ["temp", "temperature", "Temperature", "TEMP"] 
+    fieldNames: ["temp", "temperature", "Temperature", "TEMP", "temp_c", "tempC", "temp_celsius"],
+    fieldTransforms: {
+      temp_c: (c: number) => c * 9 / 5 + 32,
+      tempC: (c: number) => c * 9 / 5 + 32,
+      temp_celsius: (c: number) => c * 9 / 5 + 32,
+    } as Record<string, (v: number) => number>,
   },
   { 
     sensorType: "salinity", 
@@ -161,7 +166,12 @@ function toNumber(value: any): number | undefined {
 //   2. data object:           payload.data.water_detected
 //   3. data.value (LightDB Stream + inject-metadata): payload.data.value.water_detected
 //   4. value object (no inject-metadata):             payload.value.water_detected
-function extractSensorValue(payload: any, dataObj: any, fieldNames: string[]): number | undefined {
+function extractSensorValue(
+  payload: any,
+  dataObj: any,
+  fieldNames: string[],
+  fieldTransforms?: Record<string, (v: number) => number>
+): number | undefined {
   // Build the list of candidate objects to search, in priority order
   const candidates: any[] = [
     payload,                          // root level
@@ -175,7 +185,10 @@ function extractSensorValue(payload: any, dataObj: any, fieldNames: string[]): n
     for (const obj of candidates) {
       if (obj[fieldName] !== undefined) {
         const numValue = toNumber(obj[fieldName]);
-        if (numValue !== undefined) return numValue;
+        if (numValue !== undefined) {
+          const transform = fieldTransforms?.[fieldName];
+          return transform ? transform(numValue) : numValue;
+        }
       }
     }
   }
@@ -433,7 +446,7 @@ export async function registerRoutes(
 
       // Process all sensor types
       for (const mapping of SENSOR_MAPPINGS) {
-        const value = extractSensorValue(payload, dataObj, mapping.fieldNames);
+        const value = extractSensorValue(payload, dataObj, mapping.fieldNames, (mapping as any).fieldTransforms);
         
         if (value !== undefined) {
           if (device.userId) {
