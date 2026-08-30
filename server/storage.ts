@@ -45,7 +45,7 @@ export interface IStorage {
   createUnclaimedDevice(goliothDeviceId: string): Promise<Device>;
   claimDevice(id: number, userId: string, name?: string): Promise<Device | undefined>;
   unclaimDevice(id: number): Promise<Device | undefined>;
-  updateDevice(id: number, data: { name?: string }): Promise<Device | undefined>;
+  updateDevice(id: number, data: { name?: string; dashboardVisible?: number }): Promise<Device | undefined>;
   updateDeviceLastSeen(id: number): Promise<Device | undefined>;
 
   // Alert settings
@@ -204,7 +204,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateDevice(id: number, data: { name?: string }): Promise<Device | undefined> {
+  async updateDevice(id: number, data: { name?: string; dashboardVisible?: number }): Promise<Device | undefined> {
     const [updated] = await db
       .update(devices)
       .set(data)

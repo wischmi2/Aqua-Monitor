@@ -772,7 +772,7 @@ export async function registerRoutes(
     try {
       const userId = req.user.claims.sub;
       const id = parseInt(req.params.id);
-      const { name } = req.body;
+      const { name, dashboardVisible } = req.body;
       
       const device = await storage.getDeviceById(id);
       if (!device) {
@@ -783,7 +783,30 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Not authorized to update this device" });
       }
       
-      const updated = await storage.updateDevice(id, { name });
+      const updateData: { name?: string; dashboardVisible?: number } = {};
+      if (name !== undefined) {
+        if (typeof name !== "string" || !name.trim()) {
+          return res.status(400).json({ message: "name must be a non-empty string" });
+        }
+        updateData.name = name.trim();
+      }
+      if (dashboardVisible !== undefined) {
+        if (
+          typeof dashboardVisible !== "boolean"
+          && dashboardVisible !== 0
+          && dashboardVisible !== 1
+        ) {
+          return res.status(400).json({ message: "dashboardVisible must be a boolean" });
+        }
+        updateData.dashboardVisible = typeof dashboardVisible === "boolean"
+          ? (dashboardVisible ? 1 : 0)
+          : dashboardVisible;
+      }
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ message: "No device changes provided" });
+      }
+
+      const updated = await storage.updateDevice(id, updateData);
       res.json(updated);
     } catch (error) {
       console.error("Error updating device:", error);

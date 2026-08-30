@@ -12,12 +12,13 @@ import type { Device, SensorReading } from "@shared/schema";
 
 let nextReadingId = 1;
 
-const device = (goliothDeviceId: string, name: string): Device => ({
+const device = (goliothDeviceId: string, name: string, dashboardVisible = 1): Device => ({
   id: Number(goliothDeviceId.slice(-2)),
   userId: "user-1",
   tankId: null,
   goliothDeviceId,
   name,
+  dashboardVisible,
   lastSeenAt: null,
   createdAt: new Date("2026-08-30T12:00:00.000Z"),
 });
@@ -83,6 +84,16 @@ test("keeps the latest readings separate for multiple pH PCB devices", () => {
   assert.equal(grouped[1].readings.ph?.value, 7.98);
   assert.equal(grouped[0].readings.temp_c?.value, 25);
   assert.equal(grouped[0].lastUpdated?.toISOString(), "2026-08-30T12:04:00.000Z");
+});
+
+test("does not restore a hidden device from historical pH readings", () => {
+  const hiddenDevice = "ph-board-hidden";
+  const grouped = groupPhPcbReadings(
+    [reading(hiddenDevice, "ph", 8.12, "2026-08-30T12:04:00.000Z")],
+    [device(hiddenDevice, "pH PCB hidden", 0)],
+  );
+
+  assert.deepEqual(grouped, []);
 });
 
 test("accepts nanosecond RFC3339 ce-time values at persisted Date precision", () => {

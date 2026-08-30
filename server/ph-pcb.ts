@@ -80,21 +80,30 @@ export function groupPhPcbReadings(
   readings: readonly SensorReading[],
   deviceList: readonly Device[],
 ): PhPcbDeviceData[] {
+  const hiddenDeviceIds = new Set(
+    deviceList
+      .filter((device) => device.dashboardVisible === 0)
+      .map((device) => device.goliothDeviceId),
+  );
   const phPcbDeviceIds = new Set(
     deviceList
-      .filter((device) => isNamedPhPcbDevice(device.name))
+      .filter((device) => device.dashboardVisible !== 0 && isNamedPhPcbDevice(device.name))
       .map((device) => device.goliothDeviceId),
   );
 
   for (const reading of readings) {
-    if (reading.deviceId && isPhPcbClassifierSensorType(reading.sensorType)) {
+    if (
+      reading.deviceId
+      && !hiddenDeviceIds.has(reading.deviceId)
+      && isPhPcbClassifierSensorType(reading.sensorType)
+    ) {
       phPcbDeviceIds.add(reading.deviceId);
     }
   }
 
   const grouped = new Map<string, PhPcbDeviceData>(
     deviceList
-      .filter((device) => phPcbDeviceIds.has(device.goliothDeviceId))
+      .filter((device) => device.dashboardVisible !== 0 && phPcbDeviceIds.has(device.goliothDeviceId))
       .map((device) => [
         device.goliothDeviceId,
         {

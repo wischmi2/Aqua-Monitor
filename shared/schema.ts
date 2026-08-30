@@ -77,6 +77,7 @@ export const devices = pgTable("devices", {
   tankId: integer("tank_id"),
   goliothDeviceId: text("golioth_device_id").notNull().unique(),
   name: text("name").notNull(),
+  dashboardVisible: integer("dashboard_visible").default(1).notNull(),
   lastSeenAt: timestamp("last_seen_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

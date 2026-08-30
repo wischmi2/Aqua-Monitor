@@ -95,6 +95,25 @@ export default function Settings() {
     },
   });
 
+  const visibilityMutation = useMutation({
+    mutationFn: async ({ id, dashboardVisible }: { id: number; dashboardVisible: number }) => {
+      return apiRequest("PATCH", `/api/devices/${id}`, { dashboardVisible });
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/ph-pcbs"] });
+      toast({
+        title: variables.dashboardVisible ? "Device shown on dashboard" : "Device hidden from dashboard",
+        description: variables.dashboardVisible
+          ? "Its pH card will appear again."
+          : "Its pH card was removed. Device history is preserved.",
+      });
+    },
+    onError: () => {
+      toast({ title: "Failed to update dashboard visibility", variant: "destructive" });
+    },
+  });
+
   const updateUserSettingsMutation = useMutation({
     mutationFn: async (data: { phoneNumber?: string; alertsEnabled?: number; alertCooldownMinutes?: number }) => {
       return apiRequest("PATCH", "/api/user-settings", data);
@@ -327,7 +346,7 @@ export default function Settings() {
             <Cpu className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-lg">Devices</CardTitle>
           </div>
-          <CardDescription>Manage your connected IoT devices</CardDescription>
+          <CardDescription>Manage your connected IoT devices and dashboard visibility</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div>
@@ -341,7 +360,7 @@ export default function Settings() {
                 {myDevices.map((device) => (
                   <div 
                     key={device.id} 
-                    className="flex items-center justify-between gap-2 p-3 rounded-md bg-muted/50"
+                    className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-md bg-muted/50"
                     data-testid={`device-row-${device.id}`}
                   >
                     <div className="flex-1 min-w-0">
@@ -382,6 +401,21 @@ export default function Settings() {
                     </div>
                     {editingDeviceId !== device.id && (
                       <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="mr-1 flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {device.dashboardVisible !== 0 ? "Shown on dashboard" : "Hidden from dashboard"}
+                          </span>
+                          <Switch
+                            checked={device.dashboardVisible !== 0}
+                            onCheckedChange={(checked) => visibilityMutation.mutate({
+                              id: device.id,
+                              dashboardVisible: checked ? 1 : 0,
+                            })}
+                            disabled={visibilityMutation.isPending}
+                            aria-label={`${device.dashboardVisible !== 0 ? "Hide" : "Show"} ${device.name} on dashboard`}
+                            data-testid={`switch-device-dashboard-${device.id}`}
+                          />
+                        </div>
                         <Button 
                           size="icon" 
                           variant="ghost" 
