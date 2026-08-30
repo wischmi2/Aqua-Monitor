@@ -96,6 +96,16 @@ test("does not restore a hidden device from historical pH readings", () => {
   assert.deepEqual(grouped, []);
 });
 
+test("does not restore a released device from historical pH readings", () => {
+  const releasedDevice = "ph-board-released";
+  const grouped = groupPhPcbReadings(
+    [reading(releasedDevice, "ph", 8.12, "2026-08-30T12:04:00.000Z")],
+    [],
+  );
+
+  assert.deepEqual(grouped, []);
+});
+
 test("accepts nanosecond RFC3339 ce-time values at persisted Date precision", () => {
   const timestamp = parseEventTimestamp("2026-08-30T12:34:56.123456789Z");
 

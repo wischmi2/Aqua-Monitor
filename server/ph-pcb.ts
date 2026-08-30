@@ -80,6 +80,9 @@ export function groupPhPcbReadings(
   readings: readonly SensorReading[],
   deviceList: readonly Device[],
 ): PhPcbDeviceData[] {
+  const knownDeviceIds = new Set(
+    deviceList.map((device) => device.goliothDeviceId),
+  );
   const hiddenDeviceIds = new Set(
     deviceList
       .filter((device) => device.dashboardVisible === 0)
@@ -94,6 +97,7 @@ export function groupPhPcbReadings(
   for (const reading of readings) {
     if (
       reading.deviceId
+      && knownDeviceIds.has(reading.deviceId)
       && !hiddenDeviceIds.has(reading.deviceId)
       && isPhPcbClassifierSensorType(reading.sensorType)
     ) {
@@ -114,26 +118,13 @@ export function groupPhPcbReadings(
         },
       ]),
   );
-  const deviceNames = new Map(
-    deviceList.map((device) => [device.goliothDeviceId, device.name]),
-  );
-
   for (const reading of readings) {
     if (!reading.deviceId || !phPcbDeviceIds.has(reading.deviceId)) continue;
     if (!isPhPcbSensorType(reading.sensorType)) continue;
 
     const sensorType = reading.sensorType;
     const existing = grouped.get(reading.deviceId);
-    if (!existing) {
-      grouped.set(reading.deviceId, {
-        deviceId: reading.deviceId,
-        deviceName: deviceNames.get(reading.deviceId)
-          ?? `Device ${reading.deviceId.slice(-6)}`,
-        lastUpdated: reading.recordedAt,
-        readings: { [sensorType]: reading },
-      });
-      continue;
-    }
+    if (!existing) continue;
 
     const existingReading = existing.readings[sensorType];
     if (
