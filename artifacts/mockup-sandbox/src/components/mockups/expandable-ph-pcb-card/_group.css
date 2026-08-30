@@ -1,0 +1,39 @@
+@import url("https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600&family=Roboto:wght@400;500;600;700&display=swap");
+
+:root {
+  --background: 210 20% 98%;
+  --foreground: 210 15% 12%;
+  --border: 210 15% 88%;
+  --card: 210 18% 96%;
+  --card-foreground: 210 15% 12%;
+  --muted: 210 14% 88%;
+  --muted-foreground: 210 12% 28%;
+  --primary: 200 90% 42%;
+  --primary-foreground: 200 90% 98%;
+  --secondary: 210 16% 86%;
+  --secondary-foreground: 210 15% 12%;
+  --accent: 210 16% 90%;
+  --accent-foreground: 210 15% 12%;
+  --destructive: 0 84% 48%;
+  --destructive-foreground: 0 84% 98%;
+  --ring: 200 90% 42%;
+  --font-sans: Roboto, sans-serif;
+  --font-mono: "Roboto Mono", monospace;
+  --radius: 0.5rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+}
+
+button {
+  font: inherit;
+}
