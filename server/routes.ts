@@ -9,6 +9,11 @@ import {
   type PhPcbDeviceData,
   type PhPcbSensorType,
 } from "@shared/schema";
+import {
+  groupPhPcbReadings,
+  isPhPcbClassifierSensorType,
+  resolveTelemetryTimestamp,
+} from "./ph-pcb";
 import { z } from "zod";
 import twilio from "twilio";
 
@@ -251,23 +256,6 @@ function extractSensorValue(
   return undefined;
 }
 
-function parseEventTimestamp(value: unknown): Date | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    const milliseconds = value < 1_000_000_000_000 ? value * 1000 : value;
-    const parsed = new Date(milliseconds);
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-  }
-
-  if (typeof value !== "string" || !value.trim()) return undefined;
-
-  const normalized = value.trim().replace(
-    /\.(\d{3})\d+(Z|[+-]\d{2}:\d{2})$/,
-    ".$1$2",
-  );
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-}
-
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -291,61 +279,7 @@ export async function registerRoutes(
         storage.getSensorReadingsByTypes(userId, [...PH_PCB_SENSOR_TYPES]),
         storage.getDevices(userId),
       ]);
-      const phPcbDeviceIds = new Set(
-        deviceList
-          .filter((device) => /\b(?:ph|pcb)\b/i.test(device.name))
-          .map((device) => device.goliothDeviceId)
-      );
-      for (const reading of readings) {
-        if (reading.deviceId && reading.sensorType !== "temp_c") {
-          phPcbDeviceIds.add(reading.deviceId);
-        }
-      }
-
-      const grouped = new Map<string, PhPcbDeviceData>(
-        deviceList
-          .filter((device) => phPcbDeviceIds.has(device.goliothDeviceId))
-          .map((device) => [
-            device.goliothDeviceId,
-            {
-              deviceId: device.goliothDeviceId,
-              deviceName: device.name,
-              lastUpdated: null,
-              readings: {},
-            },
-          ])
-      );
-      const deviceNames = new Map(deviceList.map((device) => [device.goliothDeviceId, device.name]));
-
-      for (const reading of readings) {
-        if (!reading.deviceId || !phPcbDeviceIds.has(reading.deviceId)) continue;
-
-        const sensorType = reading.sensorType as PhPcbSensorType;
-        if (!PH_PCB_SENSOR_TYPES.includes(sensorType)) continue;
-
-        const existing = grouped.get(reading.deviceId);
-        if (!existing) {
-          grouped.set(reading.deviceId, {
-            deviceId: reading.deviceId,
-            deviceName: deviceNames.get(reading.deviceId) ?? `Device ${reading.deviceId.slice(-6)}`,
-            lastUpdated: reading.recordedAt,
-            readings: { [sensorType]: reading },
-          });
-          continue;
-        }
-
-        const existingReading = existing.readings[sensorType];
-        if (!existingReading || new Date(reading.recordedAt) > new Date(existingReading.recordedAt)) {
-          existing.readings[sensorType] = reading;
-        }
-        if (!existing.lastUpdated || new Date(reading.recordedAt) > new Date(existing.lastUpdated)) {
-          existing.lastUpdated = reading.recordedAt;
-        }
-      }
-
-      res.json(
-        Array.from(grouped.values()).sort((a, b) => a.deviceName.localeCompare(b.deviceName))
-      );
+      res.json(groupPhPcbReadings(readings, deviceList));
     } catch (error) {
       console.error("Error fetching pH PCB readings:", error);
       res.status(500).json({ message: "Failed to fetch pH PCB readings" });
@@ -553,14 +487,15 @@ export async function registerRoutes(
 
       const payload = result.data;
       const dataObj = payload.data as any;
-      const rawEventTimestamp = req.headers["ce-time"]
-        ?? payload.timestamp
+      // ce-time is the authoritative CloudEvent measurement time. Legacy
+      // payload timestamps remain a fallback for non-pH telemetry only.
+      const rawCeTime = req.headers["ce-time"];
+      const ceTime = Array.isArray(rawCeTime) ? rawCeTime[0] : rawCeTime;
+      const legacyTimestamp = payload.timestamp
         ?? dataObj?.timestamp
         ?? dataObj?.time;
-      const eventTimestamp = parseEventTimestamp(rawEventTimestamp);
       const hasPhPcbTelemetry = SENSOR_MAPPINGS.some((mapping) => {
-        if (mapping.sensorType === "temp_c") return false;
-        if (!PH_PCB_SENSOR_TYPES.includes(mapping.sensorType as PhPcbSensorType)) return false;
+        if (!isPhPcbClassifierSensorType(mapping.sensorType)) return false;
         return extractSensorValue(
           payload,
           dataObj,
@@ -568,19 +503,16 @@ export async function registerRoutes(
           (mapping as any).fieldTransforms,
         ) !== undefined;
       });
-      if (hasPhPcbTelemetry && rawEventTimestamp === undefined) {
-        console.warn("Golioth webhook: pH PCB telemetry requires an event timestamp");
-        return res.status(400).json({ message: "Event timestamp required for pH PCB telemetry" });
+      const timestampResult = resolveTelemetryTimestamp({
+        ceTime,
+        legacyTimestamp,
+        hasPhPcbTelemetry,
+      });
+      if (!timestampResult.ok) {
+        console.warn(`Golioth webhook: ${timestampResult.message}`);
+        return res.status(400).json({ message: timestampResult.message });
       }
-      if (rawEventTimestamp !== undefined && !eventTimestamp) {
-        console.warn("Golioth webhook: Invalid event timestamp");
-        return res.status(400).json({ message: "Invalid event timestamp" });
-      }
-      if (eventTimestamp && eventTimestamp.getTime() > Date.now() + 5 * 60 * 1000) {
-        console.warn("Golioth webhook: Event timestamp is too far in the future");
-        return res.status(400).json({ message: "Invalid future event timestamp" });
-      }
-      const recordedAt = eventTimestamp ?? new Date();
+      const { recordedAt } = timestampResult;
       // Log structure summary to help diagnose format issues
       console.log("Payload keys:", Object.keys(payload));
       if (dataObj) console.log("data keys:", Object.keys(dataObj));

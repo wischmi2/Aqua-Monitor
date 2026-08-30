@@ -111,7 +111,7 @@ const phPcbMetrics: PhPcbMetricDefinition[] = [
   { key: "vbus", label: "VBUS", section: "health" },
 ];
 
-function formatPcbMetricValue(key: PhPcbSensorType, reading?: SensorReading): string {
+export function formatPcbMetricValue(key: PhPcbSensorType, reading?: SensorReading): string {
   if (!reading) return "Not reported";
 
   if (key === "chg") return reading.value >= 1 ? "Charging" : "Not charging";
@@ -122,9 +122,12 @@ function formatPcbMetricValue(key: PhPcbSensorType, reading?: SensorReading): st
   return reading.value.toString();
 }
 
-function isReadingStale(reading?: SensorReading): boolean {
+export function isReadingStale(
+  reading?: SensorReading,
+  now = Date.now(),
+): boolean {
   if (!reading) return false;
-  return Date.now() - new Date(reading.recordedAt).getTime() > PH_PCB_STALE_AFTER_MS;
+  return now - new Date(reading.recordedAt).getTime() > PH_PCB_STALE_AFTER_MS;
 }
 
 function formatAge(date?: Date | string | null): string {
@@ -204,9 +207,12 @@ function PcbSection({
   );
 }
 
-function getPcbStatus(phReading?: SensorReading): SensorStatus | "delayed" | "no-data" {
+export function getPcbStatus(
+  phReading?: SensorReading,
+  now = Date.now(),
+): SensorStatus | "delayed" | "no-data" {
   if (!phReading) return "no-data";
-  if (isReadingStale(phReading)) return "delayed";
+  if (isReadingStale(phReading, now)) return "delayed";
   if (phReading.value >= 8.0 && phReading.value <= 8.4) return "normal";
   if (phReading.value >= 7.8 && phReading.value <= 8.6) return "warning";
   return "critical";
