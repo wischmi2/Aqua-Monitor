@@ -19,10 +19,11 @@ import {
   type InsertUserSettings
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, isNull } from "drizzle-orm";
+import { eq, desc, and, gte, isNull, inArray } from "drizzle-orm";
 
 export interface IStorage {
   getSensorReadings(userId: string): Promise<SensorReading[]>;
+  getSensorReadingsByTypes(userId: string, sensorTypes: string[]): Promise<SensorReading[]>;
   getLatestSensorReadings(userId: string): Promise<SensorReading[]>;
   getSensorHistory(userId: string, sensorType: string, since: Date): Promise<SensorReading[]>;
   createSensorReading(reading: InsertSensorReading): Promise<SensorReading>;
@@ -67,6 +68,19 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(sensorReadings)
       .where(eq(sensorReadings.userId, userId))
+      .orderBy(desc(sensorReadings.recordedAt));
+  }
+
+  async getSensorReadingsByTypes(userId: string, sensorTypes: string[]): Promise<SensorReading[]> {
+    return db
+      .select()
+      .from(sensorReadings)
+      .where(
+        and(
+          eq(sensorReadings.userId, userId),
+          inArray(sensorReadings.sensorType, sensorTypes),
+        )
+      )
       .orderBy(desc(sensorReadings.recordedAt));
   }
 

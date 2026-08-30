@@ -1,4 +1,4 @@
-import { SensorCard, type SensorStatus } from "@/components/sensor-card";
+import { PhPcbCard, SensorCard, type SensorStatus } from "@/components/sensor-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,7 @@ import {
   X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SensorReading, Equipment } from "@shared/schema";
+import type { SensorReading, Equipment, PhPcbDeviceData } from "@shared/schema";
 import { useFlowUnit } from "@/hooks/use-flow-unit";
 
 interface SensorConfig {
@@ -37,7 +37,6 @@ interface SensorConfig {
 }
 
 const sensorConfigs: SensorConfig[] = [
-  { type: "ph", label: "pH Level", icon: Activity, unit: "pH", normalRange: [8.0, 8.4], warningRange: [7.8, 8.6] },
   { type: "temperature", label: "Temperature", icon: Thermometer, unit: "°F", normalRange: [76, 82], warningRange: [74, 84] },
   { type: "salinity", label: "Salinity", icon: Gauge, unit: "ppt", normalRange: [34, 36], warningRange: [32, 38] },
   { type: "ammonia", label: "Ammonia", icon: Droplets, unit: "ppm", normalRange: [0, 0.02], warningRange: [0, 0.05] },
@@ -331,6 +330,11 @@ export default function Dashboard() {
     refetchInterval: 30000,
   });
 
+  const { data: phPcbs, isLoading: isLoadingPhPcbs } = useQuery<PhPcbDeviceData[]>({
+    queryKey: ["/api/sensors/ph-pcbs"],
+    refetchInterval: 30000,
+  });
+
   const { data: equipment } = useQuery<Equipment[]>({
     queryKey: ["/api/equipment"],
   });
@@ -366,7 +370,7 @@ export default function Dashboard() {
       </Card>
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {isLoading ? (
+        {isLoading || isLoadingPhPcbs ? (
           <>
             {Array.from({ length: 9 }).map((_, i) => (
               <SensorSkeleton key={i} />
@@ -374,6 +378,27 @@ export default function Dashboard() {
           </>
         ) : (
           <>
+            {phPcbs && phPcbs.length > 0 ? (
+              phPcbs.map((pcb) => <PhPcbCard key={pcb.deviceId} data={pcb} />)
+            ) : (
+              <Card data-testid="sensor-ph-pcb-empty">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="relative rounded-md bg-muted p-2">
+                      <Activity className="h-4 w-4 text-muted-foreground" />
+                      <div className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">pH PCB</p>
+                      <p className="text-[10px] text-muted-foreground">No device telemetry</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    No claimed device has reported pH PCB data yet. Claim and name the Golioth device in Settings.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
             {(() => {
               const rateReading = sensorDataMap.get("flow_rate_lpm");
               const totalReading = sensorDataMap.get("flow_liters");

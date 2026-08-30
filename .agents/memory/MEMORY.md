@@ -1,1 +1,2 @@
 - [Golioth LightDB State control](golioth-lightdb.md) — correct API endpoint and device ID strategy for solenoid control
+- [Golioth telemetry freshness](golioth-telemetry-freshness.md) — use CloudEvent source time, not webhook receipt time, for stale-data decisions

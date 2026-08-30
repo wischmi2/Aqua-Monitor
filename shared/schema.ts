@@ -26,11 +26,33 @@ export const sensorReadingsRelations = relations(sensorReadings, ({ one }) => ({
 
 export const insertSensorReadingSchema = createInsertSchema(sensorReadings).omit({
   id: true,
-  recordedAt: true,
 });
 
 export type InsertSensorReading = z.infer<typeof insertSensorReadingSchema>;
 export type SensorReading = typeof sensorReadings.$inferSelect;
+
+export const PH_PCB_SENSOR_TYPES = [
+  "ph",
+  "cal",
+  "mv",
+  "temp_c",
+  "chg",
+  "chg_stat",
+  "die_c",
+  "err",
+  "ma",
+  "v",
+  "vbus",
+] as const;
+
+export type PhPcbSensorType = typeof PH_PCB_SENSOR_TYPES[number];
+
+export interface PhPcbDeviceData {
+  deviceId: string;
+  deviceName: string;
+  lastUpdated: Date | null;
+  readings: Partial<Record<PhPcbSensorType, SensorReading>>;
+}
 
 export const tanks = pgTable("tanks", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),

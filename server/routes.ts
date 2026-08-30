@@ -2,7 +2,13 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { isAuthenticated } from "./replit_integrations/auth";
-import { insertSensorReadingSchema, type AlertSetting } from "@shared/schema";
+import {
+  insertSensorReadingSchema,
+  PH_PCB_SENSOR_TYPES,
+  type AlertSetting,
+  type PhPcbDeviceData,
+  type PhPcbSensorType,
+} from "@shared/schema";
 import { z } from "zod";
 import twilio from "twilio";
 
@@ -116,6 +122,56 @@ const SENSOR_MAPPINGS = [
     unit: "pH", 
     fieldNames: ["ph", "pH", "PH", "pH Level", "ph_level", "phLevel"] 
   },
+  {
+    sensorType: "cal",
+    unit: "point",
+    fieldNames: ["cal"],
+  },
+  {
+    sensorType: "mv",
+    unit: "mV",
+    fieldNames: ["mv"],
+  },
+  {
+    sensorType: "temp_c",
+    unit: "°C",
+    fieldNames: ["temp_c", "tempC", "temp_celsius"],
+  },
+  {
+    sensorType: "chg",
+    unit: "",
+    fieldNames: ["chg"],
+  },
+  {
+    sensorType: "chg_stat",
+    unit: "code",
+    fieldNames: ["chg_stat"],
+  },
+  {
+    sensorType: "die_c",
+    unit: "°C",
+    fieldNames: ["die_c"],
+  },
+  {
+    sensorType: "err",
+    unit: "code",
+    fieldNames: ["err"],
+  },
+  {
+    sensorType: "ma",
+    unit: "mA",
+    fieldNames: ["ma"],
+  },
+  {
+    sensorType: "v",
+    unit: "V",
+    fieldNames: ["v"],
+  },
+  {
+    sensorType: "vbus",
+    unit: "",
+    fieldNames: ["vbus"],
+  },
   { 
     sensorType: "ammonia", 
     unit: "ppm", 
@@ -195,6 +251,23 @@ function extractSensorValue(
   return undefined;
 }
 
+function parseEventTimestamp(value: unknown): Date | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const milliseconds = value < 1_000_000_000_000 ? value * 1000 : value;
+    const parsed = new Date(milliseconds);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+
+  if (typeof value !== "string" || !value.trim()) return undefined;
+
+  const normalized = value.trim().replace(
+    /\.(\d{3})\d+(Z|[+-]\d{2}:\d{2})$/,
+    ".$1$2",
+  );
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -208,6 +281,74 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching sensor readings:", error);
       res.status(500).json({ message: "Failed to fetch sensor readings" });
+    }
+  });
+
+  app.get("/api/sensors/ph-pcbs", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const [readings, deviceList] = await Promise.all([
+        storage.getSensorReadingsByTypes(userId, [...PH_PCB_SENSOR_TYPES]),
+        storage.getDevices(userId),
+      ]);
+      const phPcbDeviceIds = new Set(
+        deviceList
+          .filter((device) => /\b(?:ph|pcb)\b/i.test(device.name))
+          .map((device) => device.goliothDeviceId)
+      );
+      for (const reading of readings) {
+        if (reading.deviceId && reading.sensorType !== "temp_c") {
+          phPcbDeviceIds.add(reading.deviceId);
+        }
+      }
+
+      const grouped = new Map<string, PhPcbDeviceData>(
+        deviceList
+          .filter((device) => phPcbDeviceIds.has(device.goliothDeviceId))
+          .map((device) => [
+            device.goliothDeviceId,
+            {
+              deviceId: device.goliothDeviceId,
+              deviceName: device.name,
+              lastUpdated: null,
+              readings: {},
+            },
+          ])
+      );
+      const deviceNames = new Map(deviceList.map((device) => [device.goliothDeviceId, device.name]));
+
+      for (const reading of readings) {
+        if (!reading.deviceId || !phPcbDeviceIds.has(reading.deviceId)) continue;
+
+        const sensorType = reading.sensorType as PhPcbSensorType;
+        if (!PH_PCB_SENSOR_TYPES.includes(sensorType)) continue;
+
+        const existing = grouped.get(reading.deviceId);
+        if (!existing) {
+          grouped.set(reading.deviceId, {
+            deviceId: reading.deviceId,
+            deviceName: deviceNames.get(reading.deviceId) ?? `Device ${reading.deviceId.slice(-6)}`,
+            lastUpdated: reading.recordedAt,
+            readings: { [sensorType]: reading },
+          });
+          continue;
+        }
+
+        const existingReading = existing.readings[sensorType];
+        if (!existingReading || new Date(reading.recordedAt) > new Date(existingReading.recordedAt)) {
+          existing.readings[sensorType] = reading;
+        }
+        if (!existing.lastUpdated || new Date(reading.recordedAt) > new Date(existing.lastUpdated)) {
+          existing.lastUpdated = reading.recordedAt;
+        }
+      }
+
+      res.json(
+        Array.from(grouped.values()).sort((a, b) => a.deviceName.localeCompare(b.deviceName))
+      );
+    } catch (error) {
+      console.error("Error fetching pH PCB readings:", error);
+      res.status(500).json({ message: "Failed to fetch pH PCB readings" });
     }
   });
 
@@ -412,6 +553,34 @@ export async function registerRoutes(
 
       const payload = result.data;
       const dataObj = payload.data as any;
+      const rawEventTimestamp = req.headers["ce-time"]
+        ?? payload.timestamp
+        ?? dataObj?.timestamp
+        ?? dataObj?.time;
+      const eventTimestamp = parseEventTimestamp(rawEventTimestamp);
+      const hasPhPcbTelemetry = SENSOR_MAPPINGS.some((mapping) => {
+        if (mapping.sensorType === "temp_c") return false;
+        if (!PH_PCB_SENSOR_TYPES.includes(mapping.sensorType as PhPcbSensorType)) return false;
+        return extractSensorValue(
+          payload,
+          dataObj,
+          mapping.fieldNames,
+          (mapping as any).fieldTransforms,
+        ) !== undefined;
+      });
+      if (hasPhPcbTelemetry && rawEventTimestamp === undefined) {
+        console.warn("Golioth webhook: pH PCB telemetry requires an event timestamp");
+        return res.status(400).json({ message: "Event timestamp required for pH PCB telemetry" });
+      }
+      if (rawEventTimestamp !== undefined && !eventTimestamp) {
+        console.warn("Golioth webhook: Invalid event timestamp");
+        return res.status(400).json({ message: "Invalid event timestamp" });
+      }
+      if (eventTimestamp && eventTimestamp.getTime() > Date.now() + 5 * 60 * 1000) {
+        console.warn("Golioth webhook: Event timestamp is too far in the future");
+        return res.status(400).json({ message: "Invalid future event timestamp" });
+      }
+      const recordedAt = eventTimestamp ?? new Date();
       // Log structure summary to help diagnose format issues
       console.log("Payload keys:", Object.keys(payload));
       if (dataObj) console.log("data keys:", Object.keys(dataObj));
@@ -456,6 +625,7 @@ export async function registerRoutes(
               value: value,
               unit: mapping.unit,
               deviceId: goliothDeviceId,
+              recordedAt,
             });
             storedReadings.push(`${mapping.sensorType}: ${value}${mapping.unit}`);
             
