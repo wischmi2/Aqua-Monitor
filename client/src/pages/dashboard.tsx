@@ -1,4 +1,5 @@
 import { temperatureUnitLabel } from "@shared/temperature";
+import { selectTemperatureReading } from "@shared/temperature-source";
 import { PhPcbCard, SensorCard, type SensorStatus } from "@/components/sensor-card";
 import { SolarPcbCard } from "@/components/solar-pcb-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { 
   Thermometer, 
   Gauge, 
@@ -25,7 +26,7 @@ import {
   X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SensorReading, Equipment, Device, PhPcbDeviceData, SolarPcbDeviceData } from "@shared/schema";
+import type { SensorReading, Equipment, Device, PhPcbDeviceData, SolarPcbDeviceData, UserSettings } from "@shared/schema";
 import { hasRecentHardwareReport } from "@shared/device-types";
 import { useFlowUnit } from "@/hooks/use-flow-unit";
 
@@ -79,6 +80,99 @@ function SensorSkeleton() {
         <Skeleton className="h-3 w-16" />
       </CardContent>
     </Card>
+  );
+}
+
+type TemperatureSourceOption = {
+  id: string;
+  name: string;
+};
+
+function TemperatureSourceControl({
+  sourceDeviceId,
+  savedSourceName,
+  options,
+  disabled,
+  unavailable,
+  hasAutomaticReading,
+  onChange,
+  fetchError,
+  onRetryFetch,
+  saveError,
+  onRetrySave,
+}: {
+  sourceDeviceId: string | null;
+  savedSourceName?: string;
+  options: TemperatureSourceOption[];
+  disabled: boolean;
+  unavailable: boolean;
+  hasAutomaticReading: boolean;
+  onChange: (value: string | null) => void;
+  fetchError?: string;
+  onRetryFetch?: () => void;
+  saveError?: string;
+  onRetrySave?: () => void;
+}) {
+  const savedOptionMissing = sourceDeviceId !== null && !options.some((option) => option.id === sourceDeviceId);
+  const unavailableName = savedSourceName ?? sourceDeviceId;
+
+  return (
+    <div className="space-y-2 border-t border-border/70 pt-3" data-testid="temperature-source-control">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <label htmlFor="temperature-source-select" className="text-xs font-medium text-foreground">
+          Temperature source
+        </label>
+        <span className="text-[11px] text-muted-foreground">Choose the hardware for this reading</span>
+      </div>
+      <select
+        id="temperature-source-select"
+        data-testid="select-temperature-source"
+        aria-describedby="temperature-source-help"
+        value={sourceDeviceId ?? ""}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value || null)}
+        className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-xs text-foreground shadow-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <option value="">Automatic · latest reporting device</option>
+        {options.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.name}
+          </option>
+        ))}
+        {savedOptionMissing && sourceDeviceId && (
+          <option value={sourceDeviceId}>
+            Unavailable · {unavailableName} · …{sourceDeviceId.slice(-6)}
+          </option>
+        )}
+      </select>
+      <p id="temperature-source-help" className="text-[11px] leading-4 text-muted-foreground">
+        {unavailable
+          ? "This saved device has no eligible temperature report in the last hour. The measurement will return when it reports again, or you can choose another source."
+          : sourceDeviceId === null && !hasAutomaticReading
+            ? "No eligible temperature report is available yet. Automatic will use the newest report when one arrives."
+            : "Only dashboard-enabled devices reporting temperature within the last hour can be selected."}
+      </p>
+      {fetchError && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-2 text-xs text-destructive">
+          <span>{fetchError}</span>
+          {onRetryFetch && (
+            <Button type="button" size="sm" variant="outline" className="h-7" onClick={onRetryFetch}>
+              Retry
+            </Button>
+          )}
+        </div>
+      )}
+      {saveError && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-2 text-xs text-destructive">
+          <span>{saveError}</span>
+          {onRetrySave && (
+            <Button type="button" size="sm" variant="outline" className="h-7" onClick={onRetrySave}>
+              Retry save
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -344,6 +438,31 @@ export default function Dashboard() {
     refetchInterval: 30000,
   });
 
+  const settingsQuery = useQuery<UserSettings>({
+    queryKey: ["/api/user-settings"],
+    refetchInterval: 30000,
+  });
+  const { toast } = useToast();
+  const [failedTemperatureSource, setFailedTemperatureSource] = useState<string | null>(null);
+  const temperatureSourceMutation = useMutation({
+    mutationFn: async (temperatureSourceDeviceId: string | null) => {
+      await apiRequest("PATCH", "/api/user-settings", { temperatureSourceDeviceId });
+      return temperatureSourceDeviceId;
+    },
+    onSuccess: (temperatureSourceDeviceId) => {
+      setFailedTemperatureSource(null);
+      queryClient.setQueryData<UserSettings>(["/api/user-settings"], (current) =>
+        current ? { ...current, temperatureSourceDeviceId } : current,
+      );
+      queryClient.invalidateQueries({ queryKey: ["/api/user-settings"] });
+      toast({ title: "Temperature source saved", description: "Your dashboard will use this hardware for temperature." });
+    },
+    onError: (_error, temperatureSourceDeviceId) => {
+      setFailedTemperatureSource(temperatureSourceDeviceId);
+      toast({ title: "Could not save temperature source", description: "Your existing source remains active. Please retry.", variant: "destructive" });
+    },
+  });
+
   const { data: phPcbs, isLoading: isLoadingPhPcbs } = useQuery<PhPcbDeviceData[]>({
     queryKey: ["/api/sensors/ph-pcbs"],
     refetchInterval: 30000,
@@ -369,6 +488,72 @@ export default function Dashboard() {
       sensorDataMap.set(reading.sensorType, reading);
     }
   });
+
+  const dashboardDeviceMap = new Map(
+    (devices ?? [])
+      .filter((device) => device.userId !== null && device.dashboardVisible === 1)
+      .map((device) => [device.goliothDeviceId, device]),
+  );
+  const eligibleTemperatureReadings = (readings ?? []).filter((reading) =>
+    reading.sensorType === "temperature"
+      && !!reading.deviceId
+      && dashboardDeviceMap.has(reading.deviceId)
+      && hasRecentHardwareReport(reading.recordedAt, now),
+  );
+  const temperatureSourceId = settingsQuery.data?.temperatureSourceDeviceId ?? null;
+  const temperatureSourceReady = !!settingsQuery.data && !settingsQuery.isError;
+  const temperatureReading = temperatureSourceReady && devices && readings
+    ? selectTemperatureReading(eligibleTemperatureReadings, temperatureSourceId, now)
+    : undefined;
+  // All other sensor cards keep their existing latest-reading behavior.
+  if (temperatureReading) sensorDataMap.set("temperature", temperatureReading);
+  else sensorDataMap.delete("temperature");
+
+  const temperatureSourceOptions: TemperatureSourceOption[] = Array.from(
+    new Map(eligibleTemperatureReadings.map((reading) => {
+      const device = reading.deviceId ? dashboardDeviceMap.get(reading.deviceId) : undefined;
+      const id = reading.deviceId!;
+      const name = device?.name ?? id;
+      return [id, { id, name: `${name} · …${id.slice(-6)}` }] as const;
+    })).values(),
+  ).sort((a, b) => a.name.localeCompare(b.name));
+  const pinnedSourceUnavailable = temperatureSourceId !== null && temperatureSourceReady && !temperatureReading;
+  const sourceControlDisabled = settingsQuery.isLoading
+    || settingsQuery.isFetching
+    || settingsQuery.isError
+    || !devices
+    || !readings
+    || temperatureSourceMutation.isPending;
+  const selectedSaveError = temperatureSourceMutation.isError
+    ? "The source was not changed."
+    : undefined;
+  const temperatureSourceControl = temperatureSourceReady ? (
+    <TemperatureSourceControl
+      sourceDeviceId={temperatureSourceId}
+      savedSourceName={devices?.find((device) => device.goliothDeviceId === temperatureSourceId)?.name}
+      options={temperatureSourceOptions}
+      disabled={sourceControlDisabled}
+      unavailable={pinnedSourceUnavailable}
+      hasAutomaticReading={!!selectTemperatureReading(eligibleTemperatureReadings, null, now)}
+      onChange={(value) => temperatureSourceMutation.mutate(value)}
+      saveError={selectedSaveError}
+      onRetrySave={failedTemperatureSource !== null || temperatureSourceMutation.isError
+        ? () => temperatureSourceMutation.mutate(failedTemperatureSource)
+        : undefined}
+    />
+  ) : (
+    <div className="space-y-2 border-t border-border/70 pt-3" data-testid="temperature-source-control">
+      <p className="text-xs font-medium">Temperature source</p>
+      <div role="status" className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>{settingsQuery.isError ? "Unable to load your saved temperature source." : "Loading saved temperature source…"}</span>
+        {settingsQuery.isError && (
+          <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => settingsQuery.refetch()}>
+            Retry
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 
   const recentPhPcbs = (phPcbs ?? []).filter((pcb) => hasRecentHardwareReport(pcb.lastUpdated, now));
   const recentSolarPcbs = (solarPcbs ?? []).filter((pcb) => hasRecentHardwareReport(pcb.lastUpdated, now));
@@ -468,12 +653,20 @@ export default function Dashboard() {
                   {...(config.type === "temperature" ? {
                     sourceDeviceId: reading.deviceId,
                     sourceDeviceName: reading.deviceId
-                      ? devices?.find((device) => device.goliothDeviceId === reading.deviceId)?.name ?? reading.deviceId
+                      ? dashboardDeviceMap.get(reading.deviceId)?.name ?? reading.deviceId
                       : undefined,
+                    sourceControl: temperatureSourceControl,
                   } : {})}
                 />
               );
             })}
+            {!temperatureReading && (
+              <Card className="sm:col-span-2 lg:col-span-3" data-testid="temperature-source-recovery">
+                <CardContent className="p-4">
+                  {temperatureSourceControl}
+                </CardContent>
+              </Card>
+            )}
             {visibleHardwareCardCount === 0 && (
               <Card className="sm:col-span-2 lg:col-span-3">
                 <CardContent className="flex flex-col items-start gap-2 p-6">

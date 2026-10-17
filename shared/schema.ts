@@ -189,6 +189,7 @@ export const userSettings = pgTable("user_settings", {
   phoneNumber: text("phone_number"),
   alertsEnabled: integer("alerts_enabled").default(1).notNull(),
   alertCooldownMinutes: integer("alert_cooldown_minutes").default(30).notNull(),
+  temperatureSourceDeviceId: text("temperature_source_device_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

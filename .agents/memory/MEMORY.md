@@ -4,3 +4,4 @@
 - [Dashboard hardware visibility](dashboard-hardware-visibility.md) — sensor cards appear only for hardware reporting within the last hour.
 - [History hardware visibility](history-visibility.md) — History uses a 24-hour device activity window while keeping longer chart ranges and separate devices.
 - [Temperature unit policy](temperature-unit-policy.md) — never infer units from values; device settings are future-only, and historical corrections require verification.
+- [Temperature source selection](temperature-source-selection.md) — explicit sources stay pinned; unavailable hardware must not silently fall back to another board.

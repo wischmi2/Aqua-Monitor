@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import React, { useState, type ReactNode } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -28,6 +28,7 @@ interface SensorCardProps {
   testId?: string;
   sourceDeviceName?: string;
   sourceDeviceId?: string | null;
+  sourceControl?: ReactNode;
 }
 
 const statusIndicatorColors: Record<SensorStatus, string> = {
@@ -54,6 +55,7 @@ export function SensorCard({
   testId,
   sourceDeviceName,
   sourceDeviceId,
+  sourceControl,
 }: SensorCardProps) {
   return (
     <Card data-testid={testId}>
@@ -94,6 +96,8 @@ export function SensorCard({
             </p>
           </div>
         ) : null}
+
+        {sourceControl}
 
         {lastUpdated && (
           <p className="text-xs text-muted-foreground">

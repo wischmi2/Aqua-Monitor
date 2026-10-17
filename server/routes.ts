@@ -18,6 +18,7 @@ import twilio from "twilio";
 import { extractSolarPcbPayload, hasSolarPcbTelemetry } from "./solar-pcb";
 import { buildDashboardHardware } from "./dashboard-hardware";
 import { isDeviceType, type DeviceType } from "@shared/device-types";
+import { temperatureSourceError } from "@shared/temperature-source";
 import { historyRangeStart } from "@shared/history";
 import { buildHistoryDevices, solarHistoryReadings } from "./history";
 import { extractTemperature, canCheckTemperatureAlert, temperatureInputUnitSchema, type TemperatureInputUnit } from "@shared/temperature";
@@ -980,7 +981,15 @@ export async function registerRoutes(
   app.patch("/api/user-settings", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const { phoneNumber, alertsEnabled, alertCooldownMinutes } = req.body;
+      const { phoneNumber, alertsEnabled, alertCooldownMinutes, temperatureSourceDeviceId } = req.body;
+
+      if (temperatureSourceDeviceId !== undefined) {
+        const [devices, readings] = await Promise.all([
+          storage.getDevices(userId), storage.getLatestSensorReadings(userId),
+        ]);
+        const error = temperatureSourceError(temperatureSourceDeviceId, userId, devices, readings);
+        if (error) return res.status(400).json({ message: error });
+      }
       
       if (phoneNumber !== undefined && phoneNumber !== null && phoneNumber !== '') {
         const phoneRegex = /^\+[1-9]\d{6,14}$/;
@@ -997,12 +1006,14 @@ export async function registerRoutes(
           phoneNumber: phoneNumber ?? null,
           alertsEnabled: alertsEnabled ?? 1,
           alertCooldownMinutes: alertCooldownMinutes ?? 30,
+          temperatureSourceDeviceId: temperatureSourceDeviceId ?? null,
         });
       } else {
         settings = await storage.updateUserSettings(userId, {
           phoneNumber: phoneNumber !== undefined ? phoneNumber : undefined,
           alertsEnabled: alertsEnabled !== undefined ? alertsEnabled : undefined,
           alertCooldownMinutes: alertCooldownMinutes !== undefined ? alertCooldownMinutes : undefined,
+          temperatureSourceDeviceId: temperatureSourceDeviceId !== undefined ? temperatureSourceDeviceId : undefined,
         });
       }
       
