@@ -2,3 +2,4 @@
 - [Golioth telemetry freshness](golioth-telemetry-freshness.md) — use CloudEvent source time, not webhook receipt time, for stale-data decisions
 - [PCB card presentation](pcb-card-preference.md) — the user likes the expandable pH card and wants matching PCB cards.
 - [Dashboard hardware visibility](dashboard-hardware-visibility.md) — sensor cards appear only for hardware reporting within the last hour.
+- [History hardware visibility](history-visibility.md) — History uses a 24-hour device activity window while keeping longer chart ranges and separate devices.

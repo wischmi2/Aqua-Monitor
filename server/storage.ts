@@ -26,12 +26,12 @@ import { eq, desc, and, gte, isNull, inArray } from "drizzle-orm";
 import type { DeviceType } from "@shared/device-types";
 
 export interface IStorage {
-  getSolarPcbReadings(userId: string): Promise<SolarPcbReading[]>;
+  getSolarPcbReadings(userId: string, since?: Date, deviceId?: string): Promise<SolarPcbReading[]>;
   createSolarPcbReading(reading: InsertSolarPcbReading): Promise<SolarPcbReading>;
   getSensorReadings(userId: string): Promise<SensorReading[]>;
   getSensorReadingsByTypes(userId: string, sensorTypes: string[]): Promise<SensorReading[]>;
   getLatestSensorReadings(userId: string): Promise<SensorReading[]>;
-  getSensorHistory(userId: string, sensorType: string, since: Date): Promise<SensorReading[]>;
+  getSensorHistory(userId: string, sensorType: string, since: Date, deviceId: string): Promise<SensorReading[]>;
   createSensorReading(reading: InsertSensorReading): Promise<SensorReading>;
 
   getEquipment(userId: string): Promise<Equipment[]>;
@@ -69,9 +69,13 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  async getSolarPcbReadings(userId: string): Promise<SolarPcbReading[]> {
+  async getSolarPcbReadings(userId: string, since?: Date, deviceId?: string): Promise<SolarPcbReading[]> {
     return db.select().from(solarPcbReadings)
-      .where(eq(solarPcbReadings.userId, userId))
+      .where(and(
+        eq(solarPcbReadings.userId, userId),
+        since ? gte(solarPcbReadings.recordedAt, since) : undefined,
+        deviceId ? eq(solarPcbReadings.deviceId, deviceId) : undefined,
+      ))
       .orderBy(desc(solarPcbReadings.recordedAt));
   }
 
@@ -110,13 +114,14 @@ export class DatabaseStorage implements IStorage {
         desc(sensorReadings.recordedAt), desc(sensorReadings.id));
   }
 
-  async getSensorHistory(userId: string, sensorType: string, since: Date): Promise<SensorReading[]> {
+  async getSensorHistory(userId: string, sensorType: string, since: Date, deviceId: string): Promise<SensorReading[]> {
     return db
       .select()
       .from(sensorReadings)
       .where(
         and(
           eq(sensorReadings.userId, userId),
+          eq(sensorReadings.deviceId, deviceId),
           eq(sensorReadings.sensorType, sensorType),
           gte(sensorReadings.recordedAt, since)
         )

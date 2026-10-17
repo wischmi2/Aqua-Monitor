@@ -18,6 +18,17 @@ import twilio from "twilio";
 import { extractSolarPcbPayload, hasSolarPcbTelemetry } from "./solar-pcb";
 import { buildDashboardHardware } from "./dashboard-hardware";
 import { isDeviceType, type DeviceType } from "@shared/device-types";
+import { historyRangeStart } from "@shared/history";
+import { buildHistoryDevices, solarHistoryReadings } from "./history";
+
+async function loadHistoryDevices(userId: string, now = Date.now()) {
+  const [devices, readings, solar] = await Promise.all([
+    storage.getDevices(userId),
+    storage.getLatestSensorReadings(userId),
+    storage.getSolarPcbReadings(userId, historyRangeStart("30d", now)!),
+  ]);
+  return buildHistoryDevices(userId, devices, readings, solar, now);
+}
 
 async function loadDashboardHardware(userId: string) {
   const [readings, solarReadings, devices] = await Promise.all([
@@ -305,38 +316,37 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/sensors/history/devices", isAuthenticated, async (req: any, res) => {
+    try {
+      res.json(await loadHistoryDevices(req.user.claims.sub));
+    } catch (error) {
+      console.error("Error fetching history devices:", error);
+      res.status(500).json({ message: "Failed to fetch history devices" });
+    }
+  });
+
   app.get("/api/sensors/history", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const sensorType = req.query.sensorType as string || "temperature";
-      const timeRange = req.query.timeRange as string || "24h";
-      
-      let since = new Date();
-      switch (timeRange) {
-        case "60m":
-          since.setMinutes(since.getMinutes() - 60);
-          break;
-        case "6h":
-          since.setHours(since.getHours() - 6);
-          break;
-        case "12h":
-          since.setHours(since.getHours() - 12);
-          break;
-        case "24h":
-          since.setHours(since.getHours() - 24);
-          break;
-        case "7d":
-          since.setDate(since.getDate() - 7);
-          break;
-        case "30d":
-          since.setDate(since.getDate() - 30);
-          break;
-        default:
-          since.setHours(since.getHours() - 24);
+      const { deviceId, sensorType } = req.query;
+      const timeRange = req.query.timeRange ?? "24h";
+      const now = Date.now();
+      const since = typeof timeRange === "string" ? historyRangeStart(timeRange, now) : null;
+      if (typeof deviceId !== "string" || !deviceId
+        || typeof sensorType !== "string" || !sensorType || !since) {
+        return res.status(400).json({ message: "Choose a device, reported reading, and valid time range" });
       }
-      
-      const readings = await storage.getSensorHistory(userId, sensorType, since);
-      res.json(readings);
+      const device = (await loadHistoryDevices(userId, now)).find((item) => item.deviceId === deviceId);
+      if (!device) return res.status(404).json({ message: "Device has not reported in the last 24 hours or is not claimed by you" });
+      const sensor = device.sensors.find((item) => item.sensorType === sensorType);
+      if (!sensor) return res.status(400).json({ message: "This device has not reported that reading type" });
+      const readings = sensor.source === "solar"
+        ? solarHistoryReadings(await storage.getSolarPcbReadings(userId, since, deviceId), deviceId, sensor)
+        : (await storage.getSensorHistory(userId, sensorType, since, deviceId)).map((reading) => ({
+          ...reading, id: `sensor:${reading.id}`, recordedAt: reading.recordedAt.toISOString(),
+        }));
+      res.json(readings.filter((reading) =>
+        new Date(reading.recordedAt).getTime() <= now));
     } catch (error) {
       console.error("Error fetching sensor history:", error);
       res.status(500).json({ message: "Failed to fetch sensor history" });
