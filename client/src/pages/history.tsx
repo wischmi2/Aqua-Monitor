@@ -12,6 +12,7 @@ import {
 import type { HistoryDevice, HistoryReading, HistoryRange, HistorySensor } from "@shared/history";
 import { hasRecentHistoryReport, HISTORY_RANGES } from "@shared/history";
 import { useFlowUnit } from "@/hooks/use-flow-unit";
+import { buildHistoryAxis, formatHistoryAxisTick } from "@/lib/history-axis";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,13 +39,6 @@ function dateTime(value: string) {
   });
 }
 
-function axisTime(value: number, range: HistoryRange) {
-  const date = new Date(value);
-  return ["60m", "6h", "12h", "24h"].includes(range)
-    ? date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-    : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
 function displayValue(value: string | number | boolean) {
   if (typeof value === "boolean") return value ? "True" : "False";
   return String(value);
@@ -65,6 +59,7 @@ export default function History() {
   const [selectedDevice, setSelectedDevice] = useState("");
   const [selectedSensor, setSelectedSensor] = useState("");
   const [timeRange, setTimeRange] = useState<HistoryRange>("24h");
+  const [chartWidth, setChartWidth] = useState(400);
   const [now, setNow] = useState(() => Date.now());
   const { unit, setUnit, convertRate, convertVolume, rateUnit, volumeUnit } = useFlowUnit();
 
@@ -148,6 +143,10 @@ export default function History() {
     value: convertReading(reading.value as number, resolvedSensorType, convertRate, convertVolume),
     fullTime: dateTime(reading.recordedAt),
   }));
+  const historyAxis = useMemo(
+    () => buildHistoryAxis(chartData.map((reading) => reading.timestamp), chartWidth),
+    [chartData, chartWidth],
+  );
   const recentReadings = numericReadings.slice(-10).reverse();
   const eventReadings = readings.slice().reverse();
   const hasSelection = Boolean(activeDevice && activeSensor);
@@ -364,17 +363,20 @@ export default function History() {
                     </div>
                   ) : (
                     <div data-testid="history-numeric-chart" className="h-[300px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData} margin={{ top: 12, right: 16, left: 4, bottom: 4 }}>
+                      <ResponsiveContainer width="100%" height="100%" onResize={(width) => setChartWidth(width)}>
+                        <LineChart data={chartData} margin={{ top: 12, right: 20, left: 4, bottom: 20 }}>
                           <CartesianGrid strokeDasharray="3 5" className="stroke-muted" vertical={false} />
                           <XAxis
                             dataKey="timestamp"
                             type="number"
                             scale="time"
-                            domain={["dataMin", "dataMax"]}
-                            tickFormatter={(value: number) => axisTime(value, timeRange)}
+                            domain={historyAxis.domain}
+                            ticks={historyAxis.ticks}
+                            tickFormatter={(value: number) => formatHistoryAxisTick(value, historyAxis.span)}
                             tick={{ fontSize: 11 }}
-                            minTickGap={28}
+                            interval="preserveStartEnd"
+                            padding={{ left: 8, right: 8 }}
+                            tickMargin={10}
                             axisLine={false}
                             tickLine={false}
                           />
