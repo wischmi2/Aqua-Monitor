@@ -2,7 +2,7 @@ import { isTemperatureDisplayUnit } from "@shared/temperature";
 import { useTemperatureUnit } from "@/hooks/use-temperature-unit";
 import { TemperatureUnitControl } from "@/components/temperature-unit-control";
 import { displayTemperature, temperatureStatus } from "@/lib/temperature-display";
-import { selectTemperatureReading } from "@shared/temperature-source";
+import { selectDashboardTemperatureReading, selectTemperatureReading } from "@shared/temperature-source";
 import { PhPcbCard, SensorCard, type SensorStatus } from "@/components/sensor-card";
 import { SolarPcbCard } from "@/components/solar-pcb-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -507,7 +507,7 @@ export default function Dashboard() {
   const temperatureSourceId = settingsQuery.data?.temperatureSourceDeviceId ?? null;
   const temperatureSourceReady = !!settingsQuery.data && !settingsQuery.isError;
   const temperatureReading = temperatureSourceReady && devices && readings
-    ? selectTemperatureReading(eligibleTemperatureReadings, temperatureSourceId, now)
+    ? selectDashboardTemperatureReading(readings, devices, temperatureSourceId, now)
     : undefined;
   // All other sensor cards keep their existing latest-reading behavior.
   if (temperatureReading) sensorDataMap.set("temperature", temperatureReading);

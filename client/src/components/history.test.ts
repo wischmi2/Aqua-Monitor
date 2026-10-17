@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { HistoryDevice, HistoryReading } from "@shared/history";
-import History from "../pages/history";
+import { HistoryBrowser as History } from "../pages/history";
 
 let preferredDisplayUnit: string | null = null;
 Object.defineProperty(globalThis, "localStorage", {
@@ -32,7 +32,7 @@ function render(devices: HistoryDevice[], readings: HistoryReading[] = [], prefe
     client.setQueryData(["/api/sensors/history", selected.deviceId, selected.sensors[0]?.sensorType ?? "", "24h"], readings);
   }
   try {
-    return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(History)));
+    return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(History, { initialFollowDashboard: false })));
   } finally {
     preferredDisplayUnit = null;
     client.clear();

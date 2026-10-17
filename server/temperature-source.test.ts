@@ -3,7 +3,7 @@ import test from "node:test";
 import express from "express";
 import { createServer } from "node:http";
 import type { Device, SensorReading, UserSettings } from "@shared/schema";
-import { selectTemperatureReading, temperatureSourceError } from "@shared/temperature-source";
+import { selectDashboardTemperatureReading, selectTemperatureReading, temperatureSourceError } from "@shared/temperature-source";
 import { storage } from "./storage";
 import { registerRoutes } from "./routes";
 
@@ -50,6 +50,30 @@ test("source selection rejects foreign, hidden and non-reporting devices", () =>
     [reading({ recordedAt: new Date(now - 3600_000 - 1) })], now));
   assert.ok(temperatureSourceError("board-a", "owner", [device()],
     [reading({ userId: "someone-else" })], now));
+});
+
+test("Dashboard followers use the same eligible temperature hardware, freshness and tie-break", () => {
+  const a = reading();
+  const b = reading({ id: 2, deviceId: "board-b" });
+  const hidden = reading({ id: 3, deviceId: "hidden", recordedAt: new Date(now) });
+  const released = reading({ id: 4, deviceId: "released", recordedAt: new Date(now) });
+  const unclaimed = reading({ id: 5, deviceId: "missing", recordedAt: new Date(now) });
+  const boards = [
+    device(), device({ goliothDeviceId: "board-b" }),
+    device({ goliothDeviceId: "hidden", dashboardVisible: 0 }),
+    device({ goliothDeviceId: "released", userId: null }),
+  ];
+  const rows = [a, b, hidden, released, unclaimed];
+  assert.equal(selectDashboardTemperatureReading(rows, boards, null, now), b);
+  assert.equal(selectDashboardTemperatureReading(rows, boards, "board-a", now), a);
+  assert.equal(selectDashboardTemperatureReading(rows, boards, "hidden", now), undefined);
+  assert.equal(selectDashboardTemperatureReading(rows, boards, "released", now), undefined);
+  assert.equal(selectDashboardTemperatureReading(rows, boards, "missing", now), undefined);
+  assert.equal(selectDashboardTemperatureReading([reading({ sensorType: "ph" })], boards, null, now), undefined);
+  assert.equal(selectDashboardTemperatureReading([
+    reading({ recordedAt: new Date(now - 3600_000 - 1) }),
+    reading({ id: 10, recordedAt: new Date(now + 6 * 60_000) }),
+  ], boards, null, now), undefined);
 });
 
 test("temperature source preference persists per user, validates ownership and can reset without changing alert settings", async (t) => {

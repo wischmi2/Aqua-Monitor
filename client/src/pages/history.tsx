@@ -14,6 +14,8 @@ import { useFlowUnit } from "@/hooks/use-flow-unit";
 import { useTemperatureUnit } from "@/hooks/use-temperature-unit";
 import { TemperaturePreferenceStatus } from "@/components/temperature-unit-control";
 import { buildHistoryAxis, formatHistoryAxisTick } from "@/lib/history-axis";
+import type { Device, SensorReading, UserSettings } from "@shared/schema";
+import { selectDashboardTemperatureReading } from "@shared/temperature-source";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -71,6 +73,13 @@ async function readError(response: Response) {
 }
 
 export default function History() {
+  return <HistoryBrowser />;
+}
+
+export function HistoryBrowser(
+  { initialFollowDashboard = true }: { initialFollowDashboard?: boolean } = {},
+) {
+  const [followsDashboard, setFollowsDashboard] = useState(initialFollowDashboard);
   const [selectedDevice, setSelectedDevice] = useState("");
   const [selectedSensor, setSelectedSensor] = useState("");
   const [timeRange, setTimeRange] = useState<HistoryRange>("24h");
@@ -94,31 +103,65 @@ export default function History() {
     refetchInterval: 30_000,
   });
 
+  const settingsQuery = useQuery<UserSettings>({
+    queryKey: ["/api/user-settings"],
+    refetchInterval: 30_000,
+  });
+  const dashboardDevicesQuery = useQuery<Device[]>({
+    queryKey: ["/api/devices"],
+    refetchInterval: 30_000,
+  });
+  const latestReadingsQuery = useQuery<SensorReading[]>({
+    queryKey: ["/api/sensors/latest"],
+    refetchInterval: 30_000,
+  });
+
   const activeDevices = useMemo(
     () => (devicesQuery.data ?? []).filter((device) => hasRecentHistoryReport(device.lastReportedAt, now)),
     [devicesQuery.data, now],
   );
-  const resolvedDeviceId = activeDevices.some((device) => device.deviceId === selectedDevice)
-    ? selectedDevice
-    : activeDevices[0]?.deviceId ?? "";
+  const temperatureSourceId = settingsQuery.data?.temperatureSourceDeviceId ?? null;
+  const dashboardTemperatureReading = !settingsQuery.isError
+    && !dashboardDevicesQuery.isError
+    && !latestReadingsQuery.isError
+    && settingsQuery.data
+    && dashboardDevicesQuery.data
+    && latestReadingsQuery.data
+    ? selectDashboardTemperatureReading(latestReadingsQuery.data, dashboardDevicesQuery.data, temperatureSourceId, now)
+    : undefined;
+  const dashboardDeviceId = temperatureSourceId ?? dashboardTemperatureReading?.deviceId ?? "";
+  const followedDevice = activeDevices.find((device) => device.deviceId === dashboardDeviceId);
+  const followedTemperatureSensor = followedDevice?.sensors.find((sensor) => sensor.sensorType === "temperature");
+  const sourceQueriesLoading = settingsQuery.isLoading || dashboardDevicesQuery.isLoading || latestReadingsQuery.isLoading;
+  const sourceQueryError = settingsQuery.isError || dashboardDevicesQuery.isError || latestReadingsQuery.isError;
+  const sourceQueryErrorMessage = settingsQuery.isError
+    ? settingsQuery.error.message
+    : dashboardDevicesQuery.isError
+      ? dashboardDevicesQuery.error.message
+      : latestReadingsQuery.isError
+        ? latestReadingsQuery.error.message
+        : "";
+  const sourceReady = !sourceQueriesLoading && !sourceQueryError;
+  const sourceUnavailable = followsDashboard && sourceReady
+    && (!dashboardDeviceId || !followedDevice || !followedTemperatureSensor);
+  const resolvedDeviceId = followsDashboard
+    ? sourceReady && !sourceUnavailable ? dashboardDeviceId : ""
+    : activeDevices.some((device) => device.deviceId === selectedDevice)
+      ? selectedDevice
+      : activeDevices[0]?.deviceId ?? "";
   const activeDevice = activeDevices.find((device) => device.deviceId === resolvedDeviceId);
   const deviceSensors = activeDevice?.sensors ?? [];
-  const resolvedSensorType = deviceSensors.some((sensor) => sensor.sensorType === selectedSensor)
-    ? selectedSensor
-    : deviceSensors[0]?.sensorType ?? "";
+  const resolvedSensorType = followsDashboard
+    ? followedTemperatureSensor && resolvedDeviceId ? "temperature" : ""
+    : deviceSensors.some((sensor) => sensor.sensorType === selectedSensor)
+      ? selectedSensor
+      : deviceSensors[0]?.sensorType ?? "";
   const activeSensor = deviceSensors.find((sensor) => sensor.sensorType === resolvedSensorType);
-
-  useEffect(() => {
-    if (selectedDevice !== resolvedDeviceId) setSelectedDevice(resolvedDeviceId);
-  }, [selectedDevice, resolvedDeviceId]);
-
-  useEffect(() => {
-    if (selectedSensor !== resolvedSensorType) setSelectedSensor(resolvedSensorType);
-  }, [selectedSensor, resolvedSensorType]);
+  const sourceBlocked = followsDashboard && (sourceQueriesLoading || sourceQueryError || sourceUnavailable);
 
   const historyQuery = useQuery<HistoryReading[]>({
     queryKey: ["/api/sensors/history", resolvedDeviceId, resolvedSensorType, timeRange],
-    enabled: Boolean(activeDevice && activeSensor && resolvedDeviceId && resolvedSensorType),
+    enabled: Boolean(!sourceBlocked && activeDevice && activeSensor && resolvedDeviceId && resolvedSensorType),
     refetchInterval: 30_000,
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -223,6 +266,68 @@ export default function History() {
         </div>
       )}
 
+      <section
+        data-testid="history-source-status"
+        className="flex flex-col gap-3 rounded-xl border border-border bg-card/80 p-4 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="min-w-0" data-testid={followsDashboard ? "history-follow-status" : undefined}>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Temperature source</p>
+          {followsDashboard ? (
+            sourceQueriesLoading ? (
+              <p role="status" className="mt-1 text-sm text-muted-foreground">Checking Dashboard temperature source…</p>
+            ) : sourceQueryError ? (
+              <div role="alert" data-testid="history-source-error" className="mt-1 flex flex-wrap items-center gap-2 text-sm text-destructive">
+                <span>Couldn’t confirm the Dashboard source: {sourceQueryErrorMessage}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (settingsQuery.isError) void settingsQuery.refetch();
+                    if (dashboardDevicesQuery.isError) void dashboardDevicesQuery.refetch();
+                    if (latestReadingsQuery.isError) void latestReadingsQuery.refetch();
+                  }}
+                  className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted"
+                  data-testid="button-retry-history-source"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : sourceUnavailable ? (
+              <div role="status" data-testid="history-source-unavailable" className="mt-1">
+                <p className="text-sm font-medium">
+                  {temperatureSourceId
+                    ? "The saved Dashboard temperature source is unavailable in History."
+                    : "No eligible Dashboard temperature source is reporting."}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {temperatureSourceId
+                    ? "Its board may be inactive, outside the 24-hour archive window, or missing the canonical temperature channel. No other board is shown."
+                    : "History will follow the newest eligible temperature report when one arrives. No board is selected yet."}
+                </p>
+              </div>
+            ) : (
+              <p role="status" className="mt-1 text-sm">
+                Following Dashboard · <span className="font-medium">{followedDevice?.name || followedDevice?.deviceId}</span>
+                <span className="ml-2 font-mono text-xs text-muted-foreground">{followedDevice?.deviceId}</span>
+              </p>
+            )
+          ) : (
+            <p role="status" className="mt-1 text-sm" data-testid="history-manual-source-status">
+              Manual browsing · Dashboard source is not changing
+            </p>
+          )}
+        </div>
+        {!followsDashboard ? (
+          <button
+            type="button"
+            onClick={() => setFollowsDashboard(true)}
+            className="w-fit shrink-0 rounded-lg border border-primary/30 bg-primary/5 px-3.5 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
+            data-testid="history-resume-following"
+          >
+            Return to Dashboard source
+          </button>
+        ) : null}
+      </section>
+
       {devicesQuery.isLoading ? (
         <section data-testid="history-devices-loading" aria-label="Loading connected boards" className="space-y-4">
           <Skeleton className="h-24 w-full rounded-xl" />
@@ -249,7 +354,13 @@ export default function History() {
               <label htmlFor="history-device" className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 Reporting board
               </label>
-              <Select value={resolvedDeviceId} onValueChange={setSelectedDevice}>
+              <Select
+                value={resolvedDeviceId}
+                onValueChange={(deviceId) => {
+                  setFollowsDashboard(false);
+                  setSelectedDevice(deviceId);
+                }}
+              >
                 <SelectTrigger id="history-device" className="h-11 w-full" data-testid="select-history-device" aria-label="Select reporting board">
                   <SelectValue placeholder="Choose a board" />
                 </SelectTrigger>
@@ -268,7 +379,11 @@ export default function History() {
               </label>
               <Select
                 value={resolvedSensorType}
-                onValueChange={setSelectedSensor}
+                onValueChange={(sensorType) => {
+                  setFollowsDashboard(false);
+                  setSelectedDevice(resolvedDeviceId);
+                  setSelectedSensor(sensorType);
+                }}
                 disabled={deviceSensors.length === 0}
               >
                 <SelectTrigger id="history-sensor" className="h-11 w-full" data-testid="select-history-sensor" aria-label="Select recorded channel">
@@ -302,7 +417,21 @@ export default function History() {
             </Tabs>
           </section>
 
-          {!activeSensor ? (
+          {sourceBlocked ? (
+            <div
+              data-testid={sourceQueryError ? "history-source-error-chart" : sourceUnavailable ? "history-source-unavailable-chart" : "history-source-loading"}
+              role="status"
+              className="flex min-h-[240px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-5 text-center"
+            >
+              <p className="text-sm text-muted-foreground">
+                {sourceQueriesLoading
+                  ? "Waiting for the Dashboard temperature source before loading history."
+                  : sourceQueryError
+                    ? "History is paused until the Dashboard source can be confirmed."
+                    : "No temperature history is shown until the Dashboard source is available."}
+              </p>
+            </div>
+          ) : !activeSensor ? (
             <section
               data-testid="history-no-sensors"
               className="rounded-2xl border border-dashed border-border bg-card px-6 py-12 text-center"

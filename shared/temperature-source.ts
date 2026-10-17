@@ -15,6 +15,20 @@ export function selectTemperatureReading(
     }, undefined);
 }
 
+// Share Dashboard eligibility and tie-breaking with pages that follow its source.
+export function selectDashboardTemperatureReading(
+  readings: readonly SensorReading[], devices: readonly Device[],
+  deviceId: string | null, now = Date.now(),
+): SensorReading | undefined {
+  const eligibleIds = new Set(devices
+    .filter((device) => device.userId !== null && device.dashboardVisible === 1)
+    .map((device) => device.goliothDeviceId));
+  return selectTemperatureReading(
+    readings.filter((reading) => !!reading.deviceId && eligibleIds.has(reading.deviceId)),
+    deviceId, now,
+  );
+}
+
 export function temperatureSourceError(
   value: unknown, userId: string, devices: readonly Device[], readings: readonly SensorReading[],
   now = Date.now(),

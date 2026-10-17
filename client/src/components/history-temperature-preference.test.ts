@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TemperaturePreferenceProvider } from "./temperature-preference-provider";
-import History from "../pages/history";
+import { HistoryBrowser as History } from "../pages/history";
 import type { UserSettings } from "@shared/schema";
 import type { HistoryDevice, HistoryReading } from "@shared/history";
 
@@ -34,7 +34,7 @@ test("History renders the account unit, keeps legacy fallback, and never relabel
       client.setQueryData(["/api/sensors/history/devices"], [device]);
       client.setQueryData(["/api/sensors/history", "board", "temperature", "24h"], [{ ...reading, unit: sourceUnit }]);
       const html = renderToStaticMarkup(createElement(QueryClientProvider, { client },
-        createElement(TemperaturePreferenceProvider, { userId: "owner", children: createElement(History) })));
+        createElement(TemperaturePreferenceProvider, { userId: "owner", children: createElement(History, { initialFollowDashboard: false }) })));
       assert.match(html, new RegExp(expected));
       if (sourceUnit === "unknown") {
         assert.match(html, /Unit unknown/);
