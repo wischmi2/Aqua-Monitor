@@ -60,6 +60,8 @@ export default function Settings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/devices/unclaimed"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/ph-pcbs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/solar-pcbs"] });
       toast({ title: "Device claimed successfully" });
     },
     onError: () => {
@@ -74,6 +76,8 @@ export default function Settings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/devices/unclaimed"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/ph-pcbs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/solar-pcbs"] });
       toast({ title: "Device released" });
     },
     onError: () => {
@@ -87,6 +91,8 @@ export default function Settings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/ph-pcbs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/solar-pcbs"] });
       setEditingDeviceId(null);
       toast({ title: "Device renamed" });
     },
@@ -102,11 +108,12 @@ export default function Settings() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sensors/ph-pcbs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/solar-pcbs"] });
       toast({
         title: variables.dashboardVisible ? "Device shown on dashboard" : "Device hidden from dashboard",
         description: variables.dashboardVisible
-          ? "Its pH card will appear again."
-          : "Its pH card was removed. Device history is preserved.",
+          ? "Its device card will appear again."
+          : "Its device card was removed. Device history is preserved.",
       });
     },
     onError: () => {

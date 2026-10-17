@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, real, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, real, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -30,6 +30,34 @@ export const insertSensorReadingSchema = createInsertSchema(sensorReadings).omit
 
 export type InsertSensorReading = z.infer<typeof insertSensorReadingSchema>;
 export type SensorReading = typeof sensorReadings.$inferSelect;
+
+export const SOLAR_PCB_METRICS = [
+  "aem", "aem_window", "charge", "ibat_ma", "soc_pct",
+  "source", "usb_cc", "vbat_mv", "vbat_rise_mv", "vbus",
+] as const;
+export type SolarPcbMetric = typeof SOLAR_PCB_METRICS[number];
+export type SolarPcbPayload = Partial<Record<SolarPcbMetric, number | string | boolean>>;
+export interface SolarPcbDeviceData {
+  deviceId: string;
+  deviceName: string;
+  lastUpdated: Date | null;
+  readings: Partial<Record<SolarPcbMetric, {
+    value: number | string | boolean;
+    recordedAt: Date;
+  }>>;
+}
+
+// Keep textual charger states and boolean flags intact rather than coercing
+// them into the numeric sensor_readings table.
+export const solarPcbReadings = pgTable("solar_pcb_readings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull(),
+  deviceId: text("device_id").notNull(),
+  payload: jsonb("payload").$type<SolarPcbPayload>().notNull(),
+  recordedAt: timestamp("recorded_at").notNull(),
+});
+export type SolarPcbReading = typeof solarPcbReadings.$inferSelect;
+export type InsertSolarPcbReading = typeof solarPcbReadings.$inferInsert;
 
 export const PH_PCB_SENSOR_TYPES = [
   "ph",

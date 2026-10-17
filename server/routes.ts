@@ -16,6 +16,7 @@ import {
 } from "./ph-pcb";
 import { z } from "zod";
 import twilio from "twilio";
+import { extractSolarPcbPayload, groupSolarPcbReadings, hasSolarPcbTelemetry } from "./solar-pcb";
 
 // Helper to format sensor name for display
 function formatSensorName(sensorType: string): string {
@@ -275,14 +276,34 @@ export async function registerRoutes(
   app.get("/api/sensors/ph-pcbs", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const [readings, deviceList] = await Promise.all([
+      const [readings, deviceList, solarReadings] = await Promise.all([
         storage.getSensorReadingsByTypes(userId, [...PH_PCB_SENSOR_TYPES]),
         storage.getDevices(userId),
+        storage.getSolarPcbReadings(userId),
       ]);
-      res.json(groupPhPcbReadings(readings, deviceList));
+      const solarIds = new Set(solarReadings.map((reading) => reading.deviceId));
+      const phDevices = deviceList.filter((device) =>
+        !solarIds.has(device.goliothDeviceId) && !/\bsolar\b/i.test(device.name));
+      // Shared power fields (such as vbus) must not create a second pH card
+      // for a solar board. Readings never create cards without a claimed device.
+      res.json(groupPhPcbReadings(readings, phDevices));
     } catch (error) {
       console.error("Error fetching pH PCB readings:", error);
       res.status(500).json({ message: "Failed to fetch pH PCB readings" });
+    }
+  });
+
+  app.get("/api/sensors/solar-pcbs", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const [readings, deviceList] = await Promise.all([
+        storage.getSolarPcbReadings(userId),
+        storage.getDevices(userId),
+      ]);
+      res.json(groupSolarPcbReadings(readings, deviceList));
+    } catch (error) {
+      console.error("Error fetching Solar PCB readings:", error);
+      res.status(500).json({ message: "Failed to fetch Solar PCB readings" });
     }
   });
 
@@ -487,6 +508,8 @@ export async function registerRoutes(
 
       const payload = result.data;
       const dataObj = payload.data as any;
+      const solarPayload = extractSolarPcbPayload(payload);
+      const isSolarTelemetry = hasSolarPcbTelemetry(solarPayload);
       // ce-time is the authoritative CloudEvent measurement time. Legacy
       // payload timestamps remain a fallback for non-pH telemetry only.
       const rawCeTime = req.headers["ce-time"];
@@ -507,6 +530,7 @@ export async function registerRoutes(
         ceTime,
         legacyTimestamp,
         hasPhPcbTelemetry,
+        hasSolarPcbTelemetry: isSolarTelemetry,
       });
       if (!timestampResult.ok) {
         console.warn(`Golioth webhook: ${timestampResult.message}`);
@@ -545,8 +569,19 @@ export async function registerRoutes(
       const receivedReadings: string[] = [];
       let waterDetected = false;
 
+      if (isSolarTelemetry && device.userId) {
+        await storage.createSolarPcbReading({
+          userId: device.userId,
+          deviceId: goliothDeviceId,
+          payload: solarPayload,
+          recordedAt,
+        });
+        storedReadings.push(`Solar PCB: ${Object.keys(solarPayload).join(", ")}`);
+      }
+
       // Process all sensor types
       for (const mapping of SENSOR_MAPPINGS) {
+        if (isSolarTelemetry && isPhPcbClassifierSensorType(mapping.sensorType)) continue;
         const value = extractSensorValue(payload, dataObj, mapping.fieldNames, (mapping as any).fieldTransforms);
         
         if (value !== undefined) {

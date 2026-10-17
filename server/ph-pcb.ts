@@ -33,19 +33,21 @@ export function resolveTelemetryTimestamp({
   ceTime,
   legacyTimestamp,
   hasPhPcbTelemetry,
+  hasSolarPcbTelemetry = false,
   now = new Date(),
 }: {
   ceTime: unknown;
   legacyTimestamp: unknown;
   hasPhPcbTelemetry: boolean;
+  hasSolarPcbTelemetry?: boolean;
   now?: Date;
 }): TelemetryTimestampResult {
   const eventTimestamp = parseEventTimestamp(ceTime);
 
-  if (hasPhPcbTelemetry && !ceTime) {
+  if ((hasPhPcbTelemetry || hasSolarPcbTelemetry) && !ceTime) {
     return {
       ok: false,
-      message: "Event timestamp required for pH PCB telemetry",
+      message: `Event timestamp required for ${hasSolarPcbTelemetry ? "Solar" : "pH"} PCB telemetry`,
     };
   }
   if (ceTime && !eventTimestamp) {

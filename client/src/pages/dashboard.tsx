@@ -1,4 +1,5 @@
 import { PhPcbCard, SensorCard, type SensorStatus } from "@/components/sensor-card";
+import { SolarPcbCard } from "@/components/solar-pcb-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -23,7 +24,7 @@ import {
   X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SensorReading, Equipment, PhPcbDeviceData } from "@shared/schema";
+import type { SensorReading, Equipment, PhPcbDeviceData, SolarPcbDeviceData } from "@shared/schema";
 import { useFlowUnit } from "@/hooks/use-flow-unit";
 
 interface SensorConfig {
@@ -334,6 +335,11 @@ export default function Dashboard() {
     refetchInterval: 30000,
   });
 
+  const { data: solarPcbs, isLoading: isLoadingSolarPcbs } = useQuery<SolarPcbDeviceData[]>({
+    queryKey: ["/api/sensors/solar-pcbs"],
+    refetchInterval: 30000,
+  });
+
   const { data: equipment } = useQuery<Equipment[]>({
     queryKey: ["/api/equipment"],
   });
@@ -369,7 +375,7 @@ export default function Dashboard() {
       </Card>
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {isLoading || isLoadingPhPcbs ? (
+        {isLoading || isLoadingPhPcbs || isLoadingSolarPcbs ? (
           <>
             {Array.from({ length: 9 }).map((_, i) => (
               <SensorSkeleton key={i} />
@@ -378,6 +384,7 @@ export default function Dashboard() {
         ) : (
           <>
             {phPcbs?.map((pcb) => <PhPcbCard key={pcb.deviceId} data={pcb} />)}
+            {solarPcbs?.map((pcb) => <SolarPcbCard key={pcb.deviceId} data={pcb} />)}
             {(() => {
               const rateReading = sensorDataMap.get("flow_rate_lpm");
               const totalReading = sensorDataMap.get("flow_liters");

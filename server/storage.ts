@@ -1,5 +1,8 @@
 import { 
   sensorReadings, 
+  solarPcbReadings,
+  type SolarPcbReading,
+  type InsertSolarPcbReading,
   equipment,
   tanks,
   devices,
@@ -22,6 +25,8 @@ import { db } from "./db";
 import { eq, desc, and, gte, isNull, inArray } from "drizzle-orm";
 
 export interface IStorage {
+  getSolarPcbReadings(userId: string): Promise<SolarPcbReading[]>;
+  createSolarPcbReading(reading: InsertSolarPcbReading): Promise<SolarPcbReading>;
   getSensorReadings(userId: string): Promise<SensorReading[]>;
   getSensorReadingsByTypes(userId: string, sensorTypes: string[]): Promise<SensorReading[]>;
   getLatestSensorReadings(userId: string): Promise<SensorReading[]>;
@@ -63,6 +68,17 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  async getSolarPcbReadings(userId: string): Promise<SolarPcbReading[]> {
+    return db.select().from(solarPcbReadings)
+      .where(eq(solarPcbReadings.userId, userId))
+      .orderBy(desc(solarPcbReadings.recordedAt));
+  }
+
+  async createSolarPcbReading(reading: InsertSolarPcbReading): Promise<SolarPcbReading> {
+    const [created] = await db.insert(solarPcbReadings).values(reading).returning();
+    return created;
+  }
+
   async getSensorReadings(userId: string): Promise<SensorReading[]> {
     return db
       .select()
