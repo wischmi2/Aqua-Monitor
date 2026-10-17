@@ -19,6 +19,7 @@ const device = (goliothDeviceId: string, name: string, dashboardVisible = 1): De
   goliothDeviceId,
   name,
   dashboardVisible,
+  deviceType: "auto",
   lastSeenAt: null,
   createdAt: new Date("2026-08-30T12:00:00.000Z"),
 });

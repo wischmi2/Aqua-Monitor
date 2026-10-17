@@ -3,6 +3,7 @@ import { pgTable, text, varchar, real, timestamp, integer, jsonb } from "drizzle
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
+import type { DeviceType } from "./device-types";
 
 export * from "./models/auth";
 import { users } from "./models/auth";
@@ -106,6 +107,7 @@ export const devices = pgTable("devices", {
   goliothDeviceId: text("golioth_device_id").notNull().unique(),
   name: text("name").notNull(),
   dashboardVisible: integer("dashboard_visible").default(1).notNull(),
+  deviceType: text("device_type").$type<DeviceType>().default("auto").notNull(),
   lastSeenAt: timestamp("last_seen_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

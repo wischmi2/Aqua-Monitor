@@ -92,7 +92,8 @@ export function groupPhPcbReadings(
   );
   const phPcbDeviceIds = new Set(
     deviceList
-      .filter((device) => device.dashboardVisible !== 0 && isNamedPhPcbDevice(device.name))
+      .filter((device) => device.dashboardVisible !== 0
+        && (device.deviceType === "ph_pcb" || isNamedPhPcbDevice(device.name)))
       .map((device) => device.goliothDeviceId),
   );
 

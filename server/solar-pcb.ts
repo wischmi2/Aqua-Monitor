@@ -45,7 +45,8 @@ export function groupSolarPcbReadings(
   const grouped = new Map<string, SolarPcbDeviceData>(
     devices
       .filter((device) => device.userId && device.dashboardVisible !== 0
-        && (telemetryDeviceIds.has(device.goliothDeviceId) || /\bsolar\b/i.test(device.name)))
+        && (device.deviceType === "solar_pcb"
+          || telemetryDeviceIds.has(device.goliothDeviceId) || /\bsolar\b/i.test(device.name)))
       .map((device) => [device.goliothDeviceId, {
         deviceId: device.goliothDeviceId,
         deviceName: device.name,

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { 
   Thermometer, 
   Gauge, 
@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SensorReading, Equipment, PhPcbDeviceData, SolarPcbDeviceData } from "@shared/schema";
+import { hasRecentHardwareReport } from "@shared/device-types";
 import { useFlowUnit } from "@/hooks/use-flow-unit";
 
 interface SensorConfig {
@@ -325,6 +326,13 @@ function WaterFlowCard({ flowRate, totalFlow, lastUpdated, equipment }: WaterFlo
 }
 
 export default function Dashboard() {
+  // Expire cached cards even when a refetch fails or returns identical data.
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const { data: readings, isLoading } = useQuery<SensorReading[]>({
     queryKey: ["/api/sensors/latest"],
     refetchInterval: 30000,
@@ -349,11 +357,29 @@ export default function Dashboard() {
 
   const sensorDataMap = new Map<string, SensorReading>();
   readings?.forEach((reading) => {
+    if (!hasRecentHardwareReport(reading.recordedAt, now)) return;
     const existing = sensorDataMap.get(reading.sensorType);
     if (!existing || new Date(reading.recordedAt) > new Date(existing.recordedAt)) {
       sensorDataMap.set(reading.sensorType, reading);
     }
   });
+
+  const recentPhPcbs = (phPcbs ?? []).filter((pcb) => hasRecentHardwareReport(pcb.lastUpdated, now));
+  const recentSolarPcbs = (solarPcbs ?? []).filter((pcb) => hasRecentHardwareReport(pcb.lastUpdated, now));
+  const rateReading = sensorDataMap.get("flow_rate_lpm");
+  const totalReading = sensorDataMap.get("flow_liters");
+  const detectorReading = sensorDataMap.get("water_present");
+  const hasFlowReading = !!rateReading || !!totalReading;
+  const hasDetectorReading = !!detectorReading;
+  const recentStandardSensors = sensorConfigs
+    .map((config) => ({ config, reading: sensorDataMap.get(config.type) }))
+    .filter((item): item is { config: SensorConfig; reading: SensorReading } => !!item.reading);
+  const visibleHardwareCardCount =
+    recentPhPcbs.length +
+    recentSolarPcbs.length +
+    Number(hasFlowReading) +
+    Number(hasDetectorReading) +
+    recentStandardSensors.length;
 
   return (
     <div className="p-4 pb-24 md:pb-4 space-y-6">
@@ -367,10 +393,23 @@ export default function Dashboard() {
           <CardTitle className="text-base">Tank Status</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-sm text-muted-foreground">All systems operational</span>
-          </div>
+          {isLoading || isLoadingPhPcbs || isLoadingSolarPcbs ? (
+            <div className="space-y-2" aria-label="Checking connected hardware">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-3 w-64 max-w-full" />
+            </div>
+          ) : visibleHardwareCardCount > 0 ? (
+            <div className="flex items-center gap-2">
+              <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+              <span className="text-sm text-muted-foreground">
+                {visibleHardwareCardCount} recent hardware {visibleHardwareCardCount === 1 ? "reading" : "readings"} reporting
+              </span>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No connected hardware has reported within the last hour.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -383,11 +422,9 @@ export default function Dashboard() {
           </>
         ) : (
           <>
-            {phPcbs?.map((pcb) => <PhPcbCard key={pcb.deviceId} data={pcb} />)}
-            {solarPcbs?.map((pcb) => <SolarPcbCard key={pcb.deviceId} data={pcb} />)}
-            {(() => {
-              const rateReading = sensorDataMap.get("flow_rate_lpm");
-              const totalReading = sensorDataMap.get("flow_liters");
+            {recentPhPcbs.map((pcb) => <PhPcbCard key={pcb.deviceId} data={pcb} />)}
+            {recentSolarPcbs.map((pcb) => <SolarPcbCard key={pcb.deviceId} data={pcb} />)}
+            {hasFlowReading && (() => {
               const lastSeen = rateReading?.recordedAt ?? totalReading?.recordedAt;
               return (
                 <WaterFlowCard
@@ -398,24 +435,18 @@ export default function Dashboard() {
                 />
               );
             })()}
-            {(() => {
-              const detectorReading = sensorDataMap.get("water_present");
-              return (
-                <WaterDetectorCard
-                  detected={detectorReading ? detectorReading.value >= 1 : false}
-                  hasData={!!detectorReading}
-                  lastUpdated={detectorReading ? getTimeAgo(new Date(detectorReading.recordedAt)) : "No data"}
-                  equipment={equipmentMap.get("water_control")}
-                />
-              );
-            })()}
-            {sensorConfigs.map((config) => {
-              const reading = sensorDataMap.get(config.type);
-              const value = reading?.value ?? 0;
+            {hasDetectorReading && (
+              <WaterDetectorCard
+                detected={detectorReading.value >= 1}
+                hasData
+                lastUpdated={getTimeAgo(new Date(detectorReading.recordedAt))}
+                equipment={equipmentMap.get("water_control")}
+              />
+            )}
+            {recentStandardSensors.map(({ config, reading }) => {
+              const value = reading.value;
               const status = getStatus(value, config);
-              const lastUpdated = reading?.recordedAt 
-                ? getTimeAgo(new Date(reading.recordedAt))
-                : "No data";
+              const lastUpdated = getTimeAgo(new Date(reading.recordedAt));
 
               return (
                 <SensorCard
@@ -430,6 +461,22 @@ export default function Dashboard() {
                 />
               );
             })}
+            {visibleHardwareCardCount === 0 && (
+              <Card className="sm:col-span-2 lg:col-span-3">
+                <CardContent className="flex flex-col items-start gap-2 p-6">
+                  <p className="font-medium">No recent sensor reports</p>
+                  <p className="text-sm text-muted-foreground">
+                    Hardware readings appear here only when a visible, connected device has reported within the last hour.
+                  </p>
+                  <a
+                    href="/settings"
+                    className="mt-1 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    Review device settings
+                  </a>
+                </CardContent>
+              </Card>
+            )}
           </>
         )}
       </div>

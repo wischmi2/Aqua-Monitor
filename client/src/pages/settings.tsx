@@ -13,6 +13,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Device, AlertSetting, UserSettings } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DEVICE_TYPE_OPTIONS, type DeviceType } from "@shared/device-types";
 
 const SENSOR_TYPES = [
   { value: "temperature", label: "Temperature", unit: "°F", isBoolean: false },
@@ -60,6 +61,7 @@ export default function Settings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/devices/unclaimed"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/latest"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sensors/ph-pcbs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sensors/solar-pcbs"] });
       toast({ title: "Device claimed successfully" });
@@ -76,6 +78,7 @@ export default function Settings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/devices/unclaimed"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/latest"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sensors/ph-pcbs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sensors/solar-pcbs"] });
       toast({ title: "Device released" });
@@ -91,6 +94,7 @@ export default function Settings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/latest"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sensors/ph-pcbs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sensors/solar-pcbs"] });
       setEditingDeviceId(null);
@@ -107,6 +111,7 @@ export default function Settings() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/latest"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sensors/ph-pcbs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sensors/solar-pcbs"] });
       toast({
@@ -118,6 +123,22 @@ export default function Settings() {
     },
     onError: () => {
       toast({ title: "Failed to update dashboard visibility", variant: "destructive" });
+    },
+  });
+
+  const deviceTypeMutation = useMutation({
+    mutationFn: async ({ id, deviceType }: { id: number; deviceType: DeviceType }) => {
+      return apiRequest("PATCH", `/api/devices/${id}`, { deviceType });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/latest"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/ph-pcbs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sensors/solar-pcbs"] });
+      toast({ title: "Device type updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update device type", variant: "destructive" });
     },
   });
 
@@ -353,7 +374,7 @@ export default function Settings() {
             <Cpu className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-lg">Devices</CardTitle>
           </div>
-          <CardDescription>Manage your connected IoT devices and dashboard visibility</CardDescription>
+          <CardDescription>Choose how each device is interpreted and whether it appears on your dashboard. Enabled devices appear only after reporting within the last hour.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div>
@@ -403,6 +424,35 @@ export default function Settings() {
                           <p className="text-xs text-muted-foreground truncate">
                             ID: {device.goliothDeviceId} | Last seen: {formatLastSeen(device.lastSeenAt)}
                           </p>
+                          <div className="mt-2 space-y-1">
+                            <Label htmlFor={`device-type-${device.id}`} className="text-xs text-muted-foreground">
+                              Hardware type
+                            </Label>
+                            <Select
+                              value={device.deviceType}
+                              onValueChange={(value) => deviceTypeMutation.mutate({
+                                id: device.id,
+                                deviceType: value as DeviceType,
+                              })}
+                              disabled={deviceTypeMutation.isPending}
+                            >
+                              <SelectTrigger
+                                id={`device-type-${device.id}`}
+                                aria-label={`Hardware type for ${device.name}`}
+                                className="h-8 w-full max-w-xs text-xs"
+                                data-testid={`select-device-type-${device.id}`}
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {DEVICE_TYPE_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </>
                       )}
                     </div>

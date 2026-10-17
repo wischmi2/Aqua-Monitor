@@ -10,13 +10,23 @@ import {
   type PhPcbSensorType,
 } from "@shared/schema";
 import {
-  groupPhPcbReadings,
   isPhPcbClassifierSensorType,
   resolveTelemetryTimestamp,
 } from "./ph-pcb";
 import { z } from "zod";
 import twilio from "twilio";
-import { extractSolarPcbPayload, groupSolarPcbReadings, hasSolarPcbTelemetry } from "./solar-pcb";
+import { extractSolarPcbPayload, hasSolarPcbTelemetry } from "./solar-pcb";
+import { buildDashboardHardware } from "./dashboard-hardware";
+import { isDeviceType, type DeviceType } from "@shared/device-types";
+
+async function loadDashboardHardware(userId: string) {
+  const [readings, solarReadings, devices] = await Promise.all([
+    storage.getLatestSensorReadings(userId),
+    storage.getSolarPcbReadings(userId),
+    storage.getDevices(userId),
+  ]);
+  return buildDashboardHardware(readings, solarReadings, devices);
+}
 
 // Helper to format sensor name for display
 function formatSensorName(sensorType: string): string {
@@ -265,7 +275,7 @@ export async function registerRoutes(
   app.get("/api/sensors/latest", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const readings = await storage.getLatestSensorReadings(userId);
+      const { readings } = await loadDashboardHardware(userId);
       res.json(readings);
     } catch (error) {
       console.error("Error fetching sensor readings:", error);
@@ -276,17 +286,8 @@ export async function registerRoutes(
   app.get("/api/sensors/ph-pcbs", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const [readings, deviceList, solarReadings] = await Promise.all([
-        storage.getSensorReadingsByTypes(userId, [...PH_PCB_SENSOR_TYPES]),
-        storage.getDevices(userId),
-        storage.getSolarPcbReadings(userId),
-      ]);
-      const solarIds = new Set(solarReadings.map((reading) => reading.deviceId));
-      const phDevices = deviceList.filter((device) =>
-        !solarIds.has(device.goliothDeviceId) && !/\bsolar\b/i.test(device.name));
-      // Shared power fields (such as vbus) must not create a second pH card
-      // for a solar board. Readings never create cards without a claimed device.
-      res.json(groupPhPcbReadings(readings, phDevices));
+      const { phPcbs } = await loadDashboardHardware(userId);
+      res.json(phPcbs);
     } catch (error) {
       console.error("Error fetching pH PCB readings:", error);
       res.status(500).json({ message: "Failed to fetch pH PCB readings" });
@@ -296,11 +297,8 @@ export async function registerRoutes(
   app.get("/api/sensors/solar-pcbs", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const [readings, deviceList] = await Promise.all([
-        storage.getSolarPcbReadings(userId),
-        storage.getDevices(userId),
-      ]);
-      res.json(groupSolarPcbReadings(readings, deviceList));
+      const { solarPcbs } = await loadDashboardHardware(userId);
+      res.json(solarPcbs);
     } catch (error) {
       console.error("Error fetching Solar PCB readings:", error);
       res.status(500).json({ message: "Failed to fetch Solar PCB readings" });
@@ -807,7 +805,7 @@ export async function registerRoutes(
     try {
       const userId = req.user.claims.sub;
       const id = parseInt(req.params.id);
-      const { name, dashboardVisible } = req.body;
+      const { name, dashboardVisible, deviceType } = req.body;
       
       const device = await storage.getDeviceById(id);
       if (!device) {
@@ -818,7 +816,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Not authorized to update this device" });
       }
       
-      const updateData: { name?: string; dashboardVisible?: number } = {};
+      const updateData: { name?: string; dashboardVisible?: number; deviceType?: DeviceType } = {};
       if (name !== undefined) {
         if (typeof name !== "string" || !name.trim()) {
           return res.status(400).json({ message: "name must be a non-empty string" });
@@ -836,6 +834,12 @@ export async function registerRoutes(
         updateData.dashboardVisible = typeof dashboardVisible === "boolean"
           ? (dashboardVisible ? 1 : 0)
           : dashboardVisible;
+      }
+      if (deviceType !== undefined) {
+        if (!isDeviceType(deviceType)) {
+          return res.status(400).json({ message: "Invalid device type" });
+        }
+        updateData.deviceType = deviceType;
       }
       if (Object.keys(updateData).length === 0) {
         return res.status(400).json({ message: "No device changes provided" });
