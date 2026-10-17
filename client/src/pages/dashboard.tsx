@@ -24,7 +24,7 @@ import {
   X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SensorReading, Equipment, PhPcbDeviceData, SolarPcbDeviceData } from "@shared/schema";
+import type { SensorReading, Equipment, Device, PhPcbDeviceData, SolarPcbDeviceData } from "@shared/schema";
 import { hasRecentHardwareReport } from "@shared/device-types";
 import { useFlowUnit } from "@/hooks/use-flow-unit";
 
@@ -338,6 +338,11 @@ export default function Dashboard() {
     refetchInterval: 30000,
   });
 
+  const { data: devices } = useQuery<Device[]>({
+    queryKey: ["/api/devices"],
+    refetchInterval: 30000,
+  });
+
   const { data: phPcbs, isLoading: isLoadingPhPcbs } = useQuery<PhPcbDeviceData[]>({
     queryKey: ["/api/sensors/ph-pcbs"],
     refetchInterval: 30000,
@@ -458,6 +463,12 @@ export default function Dashboard() {
                   status={status}
                   lastUpdated={lastUpdated}
                   testId={`sensor-${config.type}`}
+                  {...(config.type === "temperature" ? {
+                    sourceDeviceId: reading.deviceId,
+                    sourceDeviceName: reading.deviceId
+                      ? devices?.find((device) => device.goliothDeviceId === reading.deviceId)?.name ?? reading.deviceId
+                      : undefined,
+                  } : {})}
                 />
               );
             })}

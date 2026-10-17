@@ -26,6 +26,8 @@ interface SensorCardProps {
   lastUpdated?: string;
   trend?: "up" | "down" | "stable";
   testId?: string;
+  sourceDeviceName?: string;
+  sourceDeviceId?: string | null;
 }
 
 const statusIndicatorColors: Record<SensorStatus, string> = {
@@ -48,6 +50,8 @@ export function SensorCard({
   status = "normal",
   lastUpdated,
   testId,
+  sourceDeviceName,
+  sourceDeviceId,
 }: SensorCardProps) {
   return (
     <Card data-testid={testId}>
@@ -77,6 +81,17 @@ export function SensorCard({
           </span>
           <span className="text-sm text-muted-foreground">{unit}</span>
         </div>
+
+        {sourceDeviceName !== undefined || sourceDeviceId !== undefined ? (
+          <div className="min-w-0 space-y-1 border-t border-border/70 pt-3">
+            <p className="break-words text-xs font-medium text-foreground" data-testid="sensor-source-label">
+              {sourceDeviceId ? `Source: ${sourceDeviceName || sourceDeviceId}` : "Source unavailable"}
+            </p>
+            <p className="break-all font-mono text-[11px] leading-4 text-muted-foreground" data-testid="sensor-source-id">
+              {sourceDeviceId ? `Device ID: ${sourceDeviceId}` : "Source unavailable"}
+            </p>
+          </div>
+        ) : null}
 
         {lastUpdated && (
           <p className="text-xs text-muted-foreground">
