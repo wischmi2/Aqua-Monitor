@@ -169,9 +169,18 @@ test("mixed known and unknown readings stay separate while known events follow t
   assert.doesNotMatch(html, /history-numeric-chart/);
 });
 
-test("invalid saved unit preferences leave raw Celsius history in its original default unit", () => {
+test("invalid saved unit preferences use the shared Fahrenheit default", () => {
   const board = device({ sensors: [{ sensorType: "temp_c", label: "Water temperature", unit: "°C", kind: "number", source: "sensor" }] });
   const html = render([board], [reading({ sensorType: "temp_c", value: 21.94, unit: "°C" })], "Kelvin");
-  assert.match(html, /21.94/);
-  assert.match(html, /°C/);
+  assert.match(html, /71.49/);
+  assert.match(html, /°F/);
+});
+
+test("PCB water and die History channels default to the same Fahrenheit choice as Dashboard", () => {
+  for (const sensorType of ["temp_c", "die_c"]) {
+    const board = device({ sensors: [{ sensorType, label: "Temperature", unit: "°C", kind: "number", source: "sensor" }] });
+    const html = render([board], [reading({ sensorType, value: 25, unit: "°C" })]);
+    assert.match(html, /77.00/);
+    assert.match(html, /button-history-temperature-fahrenheit" aria-pressed="true"/);
+  }
 });

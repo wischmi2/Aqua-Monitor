@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Device, SensorReading, UserSettings } from "@shared/schema";
 import Dashboard from "../pages/dashboard";
+import { PhPcbTemperatureControl } from "./sensor-card";
 
 Object.defineProperty(globalThis, "localStorage", { value: { getItem: () => null }, configurable: true });
 const now = Date.now();
@@ -82,4 +83,34 @@ test("the card does not assume Automatic while saved settings are loading", () =
 test("a selected source's zero temperature remains a real visible measurement", () => {
   const html = render("board-a", [reading("board-a", 0)]);
   assert.match(html, /sensor-temperature-value">0.0</);
+});
+
+test("Dashboard and PCB controls select the same default when there is no saved browser preference", () => {
+  const dashboard = render("board-a", [reading("board-a", 77)]);
+  const pcb = renderToStaticMarkup(createElement(PhPcbTemperatureControl, { deviceId: "pcb" }));
+  for (const [html, prefix] of [[dashboard, "dashboard"], [pcb, "ph-pcb-pcb"]]) {
+    assert.match(html, new RegExp(`button-${prefix}-temperature-fahrenheit" aria-pressed="true"`));
+    assert.match(html, new RegExp(`button-${prefix}-temperature-celsius" aria-pressed="false"`));
+  }
+});
+
+test("Dashboard display selection converts only the pinned reading and keeps its canonical status", () => {
+  Object.defineProperty(globalThis, "localStorage", {
+    value: { getItem: (key: string) => key === "historyTemperatureDisplayUnit" ? "°C" : null },
+    configurable: true,
+  });
+  const rows = [reading("board-a", 77, now - 10_000), reading("board-b", 85)];
+  const html = render("board-a", rows);
+  assert.match(html, /sensor-temperature-value">25.0</);
+  assert.match(html, /Status: normal/);
+  assert.match(html, /Source: Water probe/);
+  assert.match(html, /button-dashboard-temperature-celsius/);
+  assert.equal(rows[0].value, 77);
+  assert.equal(rows[0].unit, "°F");
+  const unknown = render("board-a", [{ ...rows[0], unit: "unknown", value: 22 }]);
+  assert.match(unknown, /sensor-temperature-value">22.0</);
+  assert.match(unknown, /Unit unknown/);
+  assert.match(unknown, /Status: unknown/);
+  assert.doesNotMatch(unknown, /button-dashboard-temperature-celsius/);
+  Object.defineProperty(globalThis, "localStorage", { value: { getItem: () => null }, configurable: true });
 });

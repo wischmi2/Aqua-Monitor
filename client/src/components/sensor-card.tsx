@@ -14,6 +14,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { PhPcbDeviceData, PhPcbSensorType, SensorReading } from "@shared/schema";
+import { isTemperatureDisplayUnit, type TemperatureDisplayUnit } from "@shared/temperature";
+import { useTemperatureUnit } from "@/hooks/use-temperature-unit";
+import { displayTemperature } from "@/lib/temperature-display";
+import { TemperatureUnitControl } from "./temperature-unit-control";
 
 export type SensorStatus = "normal" | "warning" | "critical" | "unknown";
 
@@ -29,6 +33,7 @@ interface SensorCardProps {
   sourceDeviceName?: string;
   sourceDeviceId?: string | null;
   sourceControl?: ReactNode;
+  displayControl?: ReactNode;
 }
 
 const statusIndicatorColors: Record<SensorStatus, string> = {
@@ -56,6 +61,7 @@ export function SensorCard({
   sourceDeviceName,
   sourceDeviceId,
   sourceControl,
+  displayControl,
 }: SensorCardProps) {
   return (
     <Card data-testid={testId}>
@@ -86,6 +92,7 @@ export function SensorCard({
           <span className="text-sm text-muted-foreground">{unit}</span>
         </div>
 
+        {displayControl}
         {sourceDeviceName !== undefined || sourceDeviceId !== undefined ? (
           <div className="min-w-0 space-y-1 border-t border-border/70 pt-3">
             <p className="break-words text-xs font-medium text-foreground" data-testid="sensor-source-label">
@@ -160,15 +167,21 @@ function formatAge(date?: Date | string | null): string {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
-function MetricRow({
+export function PhPcbMetricRow({
   definition,
   reading,
+  temperatureUnit,
 }: {
   definition: PhPcbMetricDefinition;
   reading?: SensorReading;
+  temperatureUnit: TemperatureDisplayUnit;
 }) {
   const missing = !reading;
   const stale = isReadingStale(reading);
+  const isTemperature = definition.key === "temp_c" || definition.key === "die_c";
+  const display = isTemperature && reading
+    ? displayTemperature(reading.value, reading.unit, temperatureUnit) : null;
+  const unit = display?.unit ?? definition.unit;
 
   return (
     <div
@@ -181,10 +194,10 @@ function MetricRow({
         missing && "font-sans text-muted-foreground",
         stale && !missing && "text-amber-700 dark:text-amber-400",
       )}>
-        {formatPcbMetricValue(definition.key, reading)}
-        {definition.unit && reading && (
+        {display ? display.value.toFixed(1) : formatPcbMetricValue(definition.key, reading)}
+        {unit && reading && (
           <span className="ml-1 font-sans text-[10px] font-normal text-muted-foreground">
-            {definition.unit}
+            {unit}
           </span>
         )}
         {stale && (
@@ -203,12 +216,14 @@ function PcbSection({
   icon: Icon,
   metrics,
   readings,
+  temperatureUnit,
 }: {
   title: string;
   description: string;
   icon: LucideIcon;
   metrics: PhPcbMetricDefinition[];
   readings: PhPcbDeviceData["readings"];
+  temperatureUnit: TemperatureDisplayUnit;
 }) {
   return (
     <section className="rounded-lg border border-border bg-background/65 p-3.5">
@@ -222,7 +237,7 @@ function PcbSection({
         </div>
       </div>
       {metrics.map((metric) => (
-        <MetricRow key={metric.key} definition={metric} reading={readings[metric.key]} />
+        <PhPcbMetricRow key={metric.key} definition={metric} reading={readings[metric.key]} temperatureUnit={temperatureUnit} />
       ))}
     </section>
   );
@@ -257,8 +272,16 @@ const pcbStatusClasses: Record<SensorStatus | "delayed" | "no-data", string> = {
   "no-data": "bg-muted text-muted-foreground",
 };
 
+export function PhPcbTemperatureControl({ deviceId }: { deviceId: string }) {
+  const { unit, setUnit } = useTemperatureUnit();
+  return <TemperatureUnitControl unit={unit} onChange={setUnit} testId={`ph-pcb-${deviceId}`} />;
+}
+
 export function PhPcbCard({ data }: { data: PhPcbDeviceData }) {
   const [expanded, setExpanded] = useState(false);
+  const { unit: temperatureUnit } = useTemperatureUnit();
+  const hasKnownTemperature = [data.readings.temp_c, data.readings.die_c]
+    .some((reading) => reading && isTemperatureDisplayUnit(reading.unit));
   const phReading = data.readings.ph;
   const status = getPcbStatus(phReading);
   const hasStaleTelemetry = Object.values(data.readings).some((reading) => isReadingStale(reading));
@@ -405,6 +428,7 @@ export function PhPcbCard({ data }: { data: PhPcbDeviceData }) {
               description="Water quality measurements"
               metrics={phMetrics}
               readings={data.readings}
+              temperatureUnit={temperatureUnit}
             />
             <PcbSection
               icon={BatteryCharging}
@@ -412,9 +436,16 @@ export function PhPcbCard({ data }: { data: PhPcbDeviceData }) {
               description="Power and board telemetry"
               metrics={healthMetrics}
               readings={data.readings}
+              temperatureUnit={temperatureUnit}
             />
           </div>
 
+          {hasKnownTemperature && (
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">Temperature display</span>
+              <PhPcbTemperatureControl deviceId={data.deviceId} />
+            </div>
+          )}
           <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border/70 pt-3 text-[10px] text-muted-foreground sm:grid-cols-4">
             <span className="inline-flex items-center gap-1.5">
               <Radio className="h-3 w-3" aria-hidden="true" />

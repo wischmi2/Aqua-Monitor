@@ -1,4 +1,7 @@
-import { temperatureUnitLabel } from "@shared/temperature";
+import { isTemperatureDisplayUnit } from "@shared/temperature";
+import { useTemperatureUnit } from "@/hooks/use-temperature-unit";
+import { TemperatureUnitControl } from "@/components/temperature-unit-control";
+import { displayTemperature, temperatureStatus } from "@/lib/temperature-display";
 import { selectTemperatureReading } from "@shared/temperature-source";
 import { PhPcbCard, SensorCard, type SensorStatus } from "@/components/sensor-card";
 import { SolarPcbCard } from "@/components/solar-pcb-card";
@@ -421,6 +424,7 @@ function WaterFlowCard({ flowRate, totalFlow, lastUpdated, equipment }: WaterFlo
 }
 
 export default function Dashboard() {
+  const { unit: temperatureUnit, setUnit: setTemperatureUnit } = useTemperatureUnit();
   // Expire cached cards even when a refetch fails or returns identical data.
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -635,9 +639,11 @@ export default function Dashboard() {
               />
             )}
             {recentStandardSensors.map(({ config, reading }) => {
-              const value = reading.value;
-              const status = config.type === "temperature" && reading.unit !== "°F"
-                ? "unknown" as const : getStatus(value, config);
+              const display = config.type === "temperature"
+                ? displayTemperature(reading.value, reading.unit, temperatureUnit)
+                : reading;
+              const status = config.type === "temperature"
+                ? temperatureStatus(reading.value, reading.unit) : getStatus(reading.value, config);
               const lastUpdated = getTimeAgo(new Date(reading.recordedAt));
 
               return (
@@ -645,12 +651,15 @@ export default function Dashboard() {
                   key={config.type}
                   icon={config.icon}
                   label={config.label}
-                  value={value}
-                  unit={config.type === "temperature" ? temperatureUnitLabel(reading.unit) : reading.unit}
+                  value={display.value}
+                  unit={display.unit}
                   status={status}
                   lastUpdated={lastUpdated}
                   testId={`sensor-${config.type}`}
                   {...(config.type === "temperature" ? {
+                    displayControl: isTemperatureDisplayUnit(reading.unit) ? (
+                      <TemperatureUnitControl unit={temperatureUnit} onChange={setTemperatureUnit} testId="dashboard" />
+                    ) : undefined,
                     sourceDeviceId: reading.deviceId,
                     sourceDeviceName: reading.deviceId
                       ? dashboardDeviceMap.get(reading.deviceId)?.name ?? reading.deviceId

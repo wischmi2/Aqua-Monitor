@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import type { HistoryDevice, HistoryReading, HistoryRange, HistorySensor } from "@shared/history";
 import { useFlowUnit } from "@/hooks/use-flow-unit";
+import { useTemperatureUnit } from "@/hooks/use-temperature-unit";
 import { buildHistoryAxis, formatHistoryAxisTick } from "@/lib/history-axis";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -23,7 +24,6 @@ import {
   isTemperatureDisplayUnit,
   normalizeTemperature,
   temperatureUnitLabel,
-  type TemperatureDisplayUnit,
 } from "@shared/temperature";
 
 const sensorColors = [
@@ -34,17 +34,6 @@ const sensorColors = [
   "hsl(var(--chart-5))",
 ];
 const FLOW_SENSOR_TYPES = ["flow_rate_lpm", "flow_liters"];
-const TEMPERATURE_DISPLAY_STORAGE_KEY = "historyTemperatureDisplayUnit";
-
-function readTemperatureDisplayPreference(): TemperatureDisplayUnit | null {
-  try {
-    if (typeof localStorage === "undefined") return null;
-    const preference = localStorage.getItem(TEMPERATURE_DISPLAY_STORAGE_KEY);
-    return isTemperatureDisplayUnit(preference) ? preference : null;
-  } catch {
-    return null;
-  }
-}
 
 function dateTime(value: string) {
   const date = new Date(value);
@@ -86,9 +75,7 @@ export default function History() {
   const [timeRange, setTimeRange] = useState<HistoryRange>("24h");
   const [chartWidth, setChartWidth] = useState(400);
   const [now, setNow] = useState(() => Date.now());
-  const [temperaturePreference, setTemperaturePreference] = useState<TemperatureDisplayUnit | null>(
-    readTemperatureDisplayPreference,
-  );
+  const { unit: temperatureDisplayUnit, setUnit: selectTemperatureUnit } = useTemperatureUnit();
   const { unit, setUnit, convertRate, convertVolume, rateUnit, volumeUnit } = useFlowUnit();
 
   useEffect(() => {
@@ -156,8 +143,6 @@ export default function History() {
   );
   const isFlowSensor = FLOW_SENSOR_TYPES.includes(resolvedSensorType);
   const isTempSensor = isTemperatureChannel(resolvedSensorType);
-  const temperatureDisplayUnit = temperaturePreference
-    ?? (resolvedSensorType === "temperature" ? "°F" : "°C");
   const displayReadings = isTempSensor
     ? readings.map((reading) => {
       if (typeof reading.value !== "number") return reading;
@@ -202,17 +187,6 @@ export default function History() {
   const recentReadings = numericReadings.slice(-10).reverse();
   const eventReadings = displayReadings.slice().reverse();
   const hasSelection = Boolean(activeDevice && activeSensor);
-
-  function selectTemperatureUnit(nextUnit: TemperatureDisplayUnit) {
-    setTemperaturePreference(nextUnit);
-    try {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(TEMPERATURE_DISPLAY_STORAGE_KEY, nextUnit);
-      }
-    } catch {
-      // Keep the current selection for this session when storage is unavailable.
-    }
-  }
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-7 px-4 pb-24 pt-6 md:px-8 md:pb-10">
