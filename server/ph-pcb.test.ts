@@ -50,6 +50,29 @@ test("does not classify a temperature-only device as a pH PCB", () => {
   assert.equal(isPhPcbSensorType("temp_c"), true);
 });
 
+test("shared power telemetry does not classify a different PCB as a pH board", () => {
+  const deviceId = "solar-board";
+  const grouped = groupPhPcbReadings(
+    ["vbus", "v", "ma", "chg", "chg_stat", "die_c", "err"].map((type) =>
+      reading(deviceId, type, 0, "2026-10-17T16:16:17.036Z")),
+    [device(deviceId, "Device 279142")],
+  );
+  assert.deepEqual(grouped, []);
+});
+
+test("a generic device with pH-specific measurements still gets its pH card", () => {
+  const deviceId = "ph-board";
+  const [grouped] = groupPhPcbReadings(
+    [
+      reading(deviceId, "ph", 8.2, "2026-10-17T16:16:17.036Z"),
+      reading(deviceId, "vbus", 0, "2026-10-17T16:16:17.036Z"),
+    ],
+    [device(deviceId, "Device 2bdf53")],
+  );
+  assert.equal(grouped.readings.ph?.value, 8.2);
+  assert.equal(grouped.readings.vbus?.value, 0);
+});
+
 test("keeps a named pH device visible with an explicit no-data group", () => {
   const grouped = groupPhPcbReadings(
     [],

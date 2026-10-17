@@ -101,7 +101,9 @@ export function groupPhPcbReadings(
       reading.deviceId
       && knownDeviceIds.has(reading.deviceId)
       && !hiddenDeviceIds.has(reading.deviceId)
-      && isPhPcbClassifierSensorType(reading.sensorType)
+      // Power and board-health fields are shared with other PCB types.
+      // Only pH-specific measurements identify an otherwise unnamed pH board.
+      && ["ph", "cal", "mv"].includes(reading.sensorType)
     ) {
       phPcbDeviceIds.add(reading.deviceId);
     }
