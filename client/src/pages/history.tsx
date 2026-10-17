@@ -10,13 +10,14 @@ import {
   YAxis,
 } from "recharts";
 import type { HistoryDevice, HistoryReading, HistoryRange, HistorySensor } from "@shared/history";
-import { hasRecentHistoryReport, HISTORY_RANGES } from "@shared/history";
 import { useFlowUnit } from "@/hooks/use-flow-unit";
 import { buildHistoryAxis, formatHistoryAxisTick } from "@/lib/history-axis";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { hasRecentHistoryReport, HISTORY_RANGES, normalizeHistoryReading } from "@shared/history";
+import { temperatureUnitLabel, normalizeTemperature } from "@shared/temperature";
 
 const sensorColors = [
   "hsl(var(--chart-3))",
@@ -121,6 +122,7 @@ export default function History() {
   const readings = useMemo(
     () => (historyQuery.data ?? [])
       .filter((reading) => reading.deviceId === resolvedDeviceId && reading.sensorType === resolvedSensorType)
+      .map(normalizeHistoryReading)
       .slice()
       .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()),
     [historyQuery.data, resolvedDeviceId, resolvedSensorType],
@@ -128,7 +130,9 @@ export default function History() {
   const isFlowSensor = FLOW_SENSOR_TYPES.includes(resolvedSensorType);
   const displayUnit = isFlowSensor
     ? resolvedSensorType === "flow_rate_lpm" ? rateUnit : volumeUnit
-    : activeSensor?.unit ?? "";
+    : resolvedSensorType === "temperature"
+      ? temperatureUnitLabel(readings[0]?.unit ?? normalizeTemperature(0, activeSensor?.unit ?? "").unit)
+      : activeSensor?.unit ?? "";
   const color = sensorColors[Math.max(0, deviceSensors.findIndex((sensor) => sensor.sensorType === resolvedSensorType) % sensorColors.length)];
 
   const numericReadings = readings.filter(
@@ -137,7 +141,9 @@ export default function History() {
   const hasNonNumericReading = readings.some(
     (reading) => typeof reading.value !== "number" || !Number.isFinite(reading.value),
   );
-  const showEvents = activeSensor?.kind === "state" || hasNonNumericReading;
+  const mixedTemperatureUnits = resolvedSensorType === "temperature"
+    && new Set(readings.map((reading) => reading.unit)).size > 1;
+  const showEvents = activeSensor?.kind === "state" || hasNonNumericReading || mixedTemperatureUnits;
   const chartData = numericReadings.map((reading) => ({
     timestamp: new Date(reading.recordedAt).getTime(),
     value: convertReading(reading.value as number, resolvedSensorType, convertRate, convertVolume),
@@ -339,6 +345,11 @@ export default function History() {
                     </div>
                   ) : showEvents ? (
                     <div data-testid="history-state-events" className="space-y-3">
+                      {mixedTemperatureUnits && (
+                        <p className="text-sm text-muted-foreground" data-testid="history-mixed-temperature-units">
+                          Known and unknown temperature units are listed separately rather than combined in a misleading chart.
+                        </p>
+                      )}
                       <div className="flex flex-wrap items-end justify-between gap-2">
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Reported events</p>
@@ -351,7 +362,8 @@ export default function History() {
                           <li key={reading.id} className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
                             <time dateTime={reading.recordedAt} className="text-sm text-muted-foreground">{dateTime(reading.recordedAt)}</time>
                             <span className="break-words font-mono text-sm font-medium sm:text-right">
-                              {displayValue(reading.value)}{reading.unit ? ` ${reading.unit}` : ""}
+                              {displayValue(reading.value)}{resolvedSensorType === "temperature"
+                                ? ` ${temperatureUnitLabel(reading.unit)}` : reading.unit ? ` ${reading.unit}` : ""}
                             </span>
                           </li>
                         ))}

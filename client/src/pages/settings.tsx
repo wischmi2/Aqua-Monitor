@@ -7,13 +7,14 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Bell, Moon, Sun, User, Shield, HelpCircle, Cpu, Check, X, Pencil, MessageSquare, Plus, Trash2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Device, AlertSetting, UserSettings } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DEVICE_TYPE_OPTIONS, type DeviceType } from "@shared/device-types";
+import type { TemperatureInputUnit } from "@shared/temperature";
 
 const SENSOR_TYPES = [
   { value: "temperature", label: "Temperature", unit: "°F", isBoolean: false },
@@ -140,6 +141,16 @@ export default function Settings() {
     onError: () => {
       toast({ title: "Failed to update device type", variant: "destructive" });
     },
+  });
+
+  const temperatureUnitMutation = useMutation({
+    mutationFn: async ({ id, temperatureInputUnit }: { id: number; temperatureInputUnit: TemperatureInputUnit }) =>
+      apiRequest("PATCH", `/api/devices/${id}`, { temperatureInputUnit }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/devices"] });
+      toast({ title: "Temperature input unit updated", description: "Applies to future readings only. Existing history is unchanged." });
+    },
+    onError: () => toast({ title: "Failed to update temperature input unit", variant: "destructive" }),
   });
 
   const updateUserSettingsMutation = useMutation({
@@ -452,6 +463,38 @@ export default function Settings() {
                                 ))}
                               </SelectContent>
                             </Select>
+                          </div>
+                          <div className="mt-3 space-y-1">
+                            <Label htmlFor={`temperature-unit-${device.id}`} className="text-xs text-muted-foreground">
+                              Temperature input unit
+                            </Label>
+                            <Select
+                              value={device.temperatureInputUnit ?? "unknown"}
+                              onValueChange={(value) => temperatureUnitMutation.mutate({
+                                id: device.id, temperatureInputUnit: value as TemperatureInputUnit,
+                              })}
+                              disabled={temperatureUnitMutation.isPending}
+                            >
+                              <SelectTrigger
+                                id={`temperature-unit-${device.id}`}
+                                aria-label={`Temperature input unit for ${device.name}`}
+                                className="h-8 w-full max-w-xs text-xs"
+                                data-testid={`select-temperature-unit-${device.id}`}
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="unknown">Unknown (do not assume)</SelectItem>
+                                <SelectItem value="celsius">Celsius (°C)</SelectItem>
+                                <SelectItem value="fahrenheit">Fahrenheit (°F)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <p className="max-w-md text-xs text-muted-foreground">
+                              For generic temp / temperature fields only. Explicit °C / °F fields override this setting.
+                              Known temperatures display in °F. Unknown units have no temperature status or alerts.
+                              Changes apply to future readings only; existing history and labels are unchanged.
+                              Older generic readings labeled °F may need a separate, verified correction.
+                            </p>
                           </div>
                         </>
                       )}

@@ -13,6 +13,7 @@ const device: Device = {
   id: 1, userId: "owner", tankId: null, goliothDeviceId: "solar-device",
   name: "Solar PCB", dashboardVisible: 1, lastSeenAt: null, createdAt: new Date(),
   deviceType: "auto",
+  temperatureInputUnit: "unknown",
 };
 const event: SolarPcbReading = {
   id: 1, userId: "owner", deviceId: device.goliothDeviceId,

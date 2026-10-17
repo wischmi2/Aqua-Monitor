@@ -3,3 +3,4 @@
 - [PCB card presentation](pcb-card-preference.md) — the user likes the expandable pH card and wants matching PCB cards.
 - [Dashboard hardware visibility](dashboard-hardware-visibility.md) — sensor cards appear only for hardware reporting within the last hour.
 - [History hardware visibility](history-visibility.md) — History uses a 24-hour device activity window while keeping longer chart ranges and separate devices.
+- [Temperature unit policy](temperature-unit-policy.md) — never infer units from values; device settings are future-only, and historical corrections require verification.

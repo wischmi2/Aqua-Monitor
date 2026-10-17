@@ -9,7 +9,7 @@ const recent = new Date(now - 30 * 60 * 1000);
 const old = new Date(now - 60 * 60 * 1000 - 1);
 const device = (overrides: Partial<Device> = {}): Device => ({
   id: 1, userId: "owner", tankId: null, goliothDeviceId: "board",
-  name: "Device board", deviceType: "auto", dashboardVisible: 1,
+  name: "Device board", deviceType: "auto", dashboardVisible: 1, temperatureInputUnit: "unknown",
   lastSeenAt: new Date(now), createdAt: recent, ...overrides,
 });
 const reading = (overrides: Partial<SensorReading> = {}): SensorReading => ({

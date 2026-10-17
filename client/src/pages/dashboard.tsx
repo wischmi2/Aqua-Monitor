@@ -1,3 +1,4 @@
+import { temperatureUnitLabel } from "@shared/temperature";
 import { PhPcbCard, SensorCard, type SensorStatus } from "@/components/sensor-card";
 import { SolarPcbCard } from "@/components/solar-pcb-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -450,7 +451,8 @@ export default function Dashboard() {
             )}
             {recentStandardSensors.map(({ config, reading }) => {
               const value = reading.value;
-              const status = getStatus(value, config);
+              const status = config.type === "temperature" && reading.unit !== "°F"
+                ? "unknown" as const : getStatus(value, config);
               const lastUpdated = getTimeAgo(new Date(reading.recordedAt));
 
               return (
@@ -459,7 +461,7 @@ export default function Dashboard() {
                   icon={config.icon}
                   label={config.label}
                   value={value}
-                  unit={config.unit}
+                  unit={config.type === "temperature" ? temperatureUnitLabel(reading.unit) : reading.unit}
                   status={status}
                   lastUpdated={lastUpdated}
                   testId={`sensor-${config.type}`}

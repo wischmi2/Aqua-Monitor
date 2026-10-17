@@ -20,6 +20,7 @@ const device = (goliothDeviceId: string, name: string, dashboardVisible = 1): De
   name,
   dashboardVisible,
   deviceType: "auto",
+  temperatureInputUnit: "unknown",
   lastSeenAt: null,
   createdAt: new Date("2026-08-30T12:00:00.000Z"),
 });

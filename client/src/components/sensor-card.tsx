@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import type { PhPcbDeviceData, PhPcbSensorType, SensorReading } from "@shared/schema";
 
-export type SensorStatus = "normal" | "warning" | "critical";
+export type SensorStatus = "normal" | "warning" | "critical" | "unknown";
 
 interface SensorCardProps {
   icon: LucideIcon;
@@ -31,12 +31,14 @@ interface SensorCardProps {
 }
 
 const statusIndicatorColors: Record<SensorStatus, string> = {
+  unknown: "bg-muted-foreground",
   normal: "bg-green-500",
   warning: "bg-amber-500",
   critical: "bg-red-500",
 };
 
 const statusBadgeVariants: Record<SensorStatus, "default" | "secondary" | "destructive"> = {
+  unknown: "secondary",
   normal: "default",
   warning: "secondary",
   critical: "destructive",
@@ -234,6 +236,7 @@ export function getPcbStatus(
 }
 
 const pcbStatusLabel: Record<SensorStatus | "delayed" | "no-data", string> = {
+  unknown: "Unknown",
   normal: "Normal",
   warning: "Warning",
   critical: "Critical",
@@ -242,6 +245,7 @@ const pcbStatusLabel: Record<SensorStatus | "delayed" | "no-data", string> = {
 };
 
 const pcbStatusClasses: Record<SensorStatus | "delayed" | "no-data", string> = {
+  unknown: "bg-muted text-muted-foreground",
   normal: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",
   warning: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",
   critical: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400",

@@ -24,6 +24,7 @@ import {
 import { db } from "./db";
 import { eq, desc, and, gte, isNull, inArray } from "drizzle-orm";
 import type { DeviceType } from "@shared/device-types";
+import type { TemperatureInputUnit } from "@shared/temperature";
 
 export interface IStorage {
   getSolarPcbReadings(userId: string, since?: Date, deviceId?: string): Promise<SolarPcbReading[]>;
@@ -51,7 +52,7 @@ export interface IStorage {
   createUnclaimedDevice(goliothDeviceId: string): Promise<Device>;
   claimDevice(id: number, userId: string, name?: string): Promise<Device | undefined>;
   unclaimDevice(id: number): Promise<Device | undefined>;
-  updateDevice(id: number, data: { name?: string; dashboardVisible?: number; deviceType?: DeviceType }): Promise<Device | undefined>;
+  updateDevice(id: number, data: { name?: string; dashboardVisible?: number; deviceType?: DeviceType; temperatureInputUnit?: TemperatureInputUnit }): Promise<Device | undefined>;
   updateDeviceLastSeen(id: number): Promise<Device | undefined>;
 
   // Alert settings
@@ -226,7 +227,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateDevice(id: number, data: { name?: string; dashboardVisible?: number; deviceType?: DeviceType }): Promise<Device | undefined> {
+  async updateDevice(id: number, data: { name?: string; dashboardVisible?: number; deviceType?: DeviceType; temperatureInputUnit?: TemperatureInputUnit }): Promise<Device | undefined> {
     const [updated] = await db
       .update(devices)
       .set(data)

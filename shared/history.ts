@@ -1,3 +1,12 @@
+import { normalizeTemperature } from "./temperature";
+
+// Read-only display conversion uses each stored reading's label, never today's
+// device configuration. Unknown values cannot be combined with known °F data.
+export function normalizeHistoryReading(reading: HistoryReading): HistoryReading {
+  if (reading.sensorType !== "temperature" || typeof reading.value !== "number") return reading;
+  return { ...reading, ...normalizeTemperature(reading.value, reading.unit) };
+}
+
 export const HISTORY_ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const HISTORY_RANGES = ["60m", "6h", "12h", "24h", "7d", "30d"] as const;
 export type HistoryRange = typeof HISTORY_RANGES[number];

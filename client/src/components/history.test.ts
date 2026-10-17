@@ -82,3 +82,32 @@ test("History distinguishes active hardware with no measurements in the selected
   assert.match(html, /history-no-data/);
   assert.doesNotMatch(html, /history-no-active-devices/);
 });
+
+test("History displays unknown temperature units honestly without a Fahrenheit label", () => {
+  const html = render([device({ sensors: [{ sensorType: "temperature", label: "Temperature", unit: "unknown", kind: "number", source: "sensor" }] })],
+    [reading({ value: 22, unit: "unknown" })]);
+  assert.match(html, /22.00/);
+  assert.match(html, /Unit unknown/);
+  assert.doesNotMatch(html, /°F/);
+});
+
+test("History never merges known and unknown temperature units into one chart", () => {
+  const html = render([device()], [
+    reading({ value: 22, unit: "unknown" }),
+    reading({ id: "sensor:2", value: 78, unit: "°F" }),
+  ]);
+  assert.match(html, /history-mixed-temperature-units/);
+  assert.match(html, /Unit unknown/);
+  assert.match(html, /78 °F/);
+  assert.doesNotMatch(html, /history-numeric-chart/);
+});
+
+test("History normalizes labeled Celsius without rewriting or reinterpreting old Fahrenheit readings", () => {
+  const rows = [reading({ value: 22, unit: "°F" }), reading({ id: "sensor:2", value: 22, unit: "°C" })];
+  const html = render([device()], rows);
+  assert.match(html, /history-numeric-chart/);
+  assert.match(html, /71.60/);
+  assert.match(html, /22.00/);
+  assert.equal(rows[1].value, 22);
+  assert.equal(rows[1].unit, "°C");
+});

@@ -20,6 +20,7 @@ import { buildDashboardHardware } from "./dashboard-hardware";
 import { isDeviceType, type DeviceType } from "@shared/device-types";
 import { historyRangeStart } from "@shared/history";
 import { buildHistoryDevices, solarHistoryReadings } from "./history";
+import { extractTemperature, canCheckTemperatureAlert, temperatureInputUnitSchema, type TemperatureInputUnit } from "@shared/temperature";
 
 async function loadHistoryDevices(userId: string, now = Date.now()) {
   const [devices, readings, solar] = await Promise.all([
@@ -61,6 +62,7 @@ async function checkAndSendAlerts(
   value: number,
   unit: string
 ): Promise<void> {
+  if (!canCheckTemperatureAlert(sensorType, unit)) return;
   try {
     const userSettings = await storage.getUserSettings(userId);
     
@@ -129,15 +131,10 @@ const goliothWebhookSchema = z.object({
 
 // Sensor mapping: defines all supported sensor types with their possible field names and units
 const SENSOR_MAPPINGS = [
-  { 
-    sensorType: "temperature", 
-    unit: "°F", 
-    fieldNames: ["temp", "temperature", "Temperature", "TEMP", "temp_c", "tempC", "temp_celsius"],
-    fieldTransforms: {
-      temp_c: (c: number) => c * 9 / 5 + 32,
-      tempC: (c: number) => c * 9 / 5 + 32,
-      temp_celsius: (c: number) => c * 9 / 5 + 32,
-    } as Record<string, (v: number) => number>,
+  {
+    sensorType: "temperature",
+    unit: "unknown",
+    fieldNames: [],
   },
   { 
     sensorType: "salinity", 
@@ -590,7 +587,11 @@ export async function registerRoutes(
       // Process all sensor types
       for (const mapping of SENSOR_MAPPINGS) {
         if (isSolarTelemetry && isPhPcbClassifierSensorType(mapping.sensorType)) continue;
-        const value = extractSensorValue(payload, dataObj, mapping.fieldNames, (mapping as any).fieldTransforms);
+        const temperature = mapping.sensorType === "temperature"
+          ? extractTemperature(payload, device.temperatureInputUnit) : undefined;
+        const value = mapping.sensorType === "temperature" ? temperature?.value
+          : extractSensorValue(payload, dataObj, mapping.fieldNames);
+        const unit = temperature?.unit ?? mapping.unit;
         
         if (value !== undefined) {
           if (device.userId) {
@@ -598,20 +599,20 @@ export async function registerRoutes(
               userId: device.userId,
               sensorType: mapping.sensorType,
               value: value,
-              unit: mapping.unit,
+              unit,
               deviceId: goliothDeviceId,
               recordedAt,
             });
-            storedReadings.push(`${mapping.sensorType}: ${value}${mapping.unit}`);
+            storedReadings.push(`${mapping.sensorType}: ${value} ${unit}`);
             
             if (mapping.sensorType === "water_present" && value >= 1) {
               waterDetected = true;
             }
 
             // Check alerts and send SMS if needed
-            await checkAndSendAlerts(device.userId, mapping.sensorType, value, mapping.unit);
+            await checkAndSendAlerts(device.userId, mapping.sensorType, value, unit);
           } else {
-            receivedReadings.push(`${mapping.sensorType}: ${value}${mapping.unit}`);
+            receivedReadings.push(`${mapping.sensorType}: ${value} ${unit}`);
           }
         }
       }
@@ -815,7 +816,7 @@ export async function registerRoutes(
     try {
       const userId = req.user.claims.sub;
       const id = parseInt(req.params.id);
-      const { name, dashboardVisible, deviceType } = req.body;
+      const { name, dashboardVisible, deviceType, temperatureInputUnit } = req.body;
       
       const device = await storage.getDeviceById(id);
       if (!device) {
@@ -826,7 +827,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Not authorized to update this device" });
       }
       
-      const updateData: { name?: string; dashboardVisible?: number; deviceType?: DeviceType } = {};
+      const updateData: { name?: string; dashboardVisible?: number; deviceType?: DeviceType; temperatureInputUnit?: TemperatureInputUnit } = {};
       if (name !== undefined) {
         if (typeof name !== "string" || !name.trim()) {
           return res.status(400).json({ message: "name must be a non-empty string" });
@@ -850,6 +851,13 @@ export async function registerRoutes(
           return res.status(400).json({ message: "Invalid device type" });
         }
         updateData.deviceType = deviceType;
+      }
+      if (temperatureInputUnit !== undefined) {
+        const parsed = temperatureInputUnitSchema.safeParse(temperatureInputUnit);
+        if (!parsed.success) {
+          return res.status(400).json({ message: "Temperature input unit must be unknown, celsius, or fahrenheit" });
+        }
+        updateData.temperatureInputUnit = parsed.data;
       }
       if (Object.keys(updateData).length === 0) {
         return res.status(400).json({ message: "No device changes provided" });

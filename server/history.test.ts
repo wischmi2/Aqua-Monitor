@@ -8,7 +8,7 @@ const now = Date.parse("2026-10-17T17:00:00Z");
 const hour = 60 * 60 * 1000;
 const device = (overrides: Partial<Device> = {}): Device => ({
   id: 1, userId: "owner", tankId: null, goliothDeviceId: "board",
-  name: "My board", deviceType: "auto", dashboardVisible: 1,
+  name: "My board", deviceType: "auto", dashboardVisible: 1, temperatureInputUnit: "unknown",
   lastSeenAt: new Date(now), createdAt: new Date(now - hour), ...overrides,
 });
 const reading = (overrides: Partial<SensorReading> = {}): SensorReading => ({
