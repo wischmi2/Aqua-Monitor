@@ -11,6 +11,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { LandingPage } from "@/components/landing-page";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TemperaturePreferenceProvider } from "@/components/temperature-preference-provider";
 
 import Dashboard from "@/pages/dashboard";
 import Controls from "@/pages/controls";
@@ -84,7 +85,11 @@ function AppContent() {
     return <LandingPage />;
   }
 
-  return <AuthenticatedApp />;
+  return (
+    <TemperaturePreferenceProvider key={user.id} userId={user.id}>
+      <AuthenticatedApp />
+    </TemperaturePreferenceProvider>
+  );
 }
 
 function App() {

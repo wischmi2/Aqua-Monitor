@@ -292,7 +292,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUserSettings(settings: InsertUserSettings): Promise<UserSettings> {
-    const [created] = await db.insert(userSettings).values(settings).returning();
+    // GETs and the first preference save can arrive together from separate tabs.
+    // Do not let a default-settings GET overwrite a concurrent explicit choice.
+    const [created] = await db.insert(userSettings).values(settings)
+      .onConflictDoUpdate({
+        target: userSettings.userId,
+        set: { ...settings, updatedAt: new Date() },
+      }).returning();
     return created;
   }
 

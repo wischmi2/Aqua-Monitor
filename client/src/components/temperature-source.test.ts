@@ -30,7 +30,7 @@ function render(source: string | null | undefined, readings: SensorReading[], de
   if (source !== undefined) {
     const settings: UserSettings = {
       id: 1, userId: "owner", phoneNumber: null, alertsEnabled: 1, alertCooldownMinutes: 30,
-      temperatureSourceDeviceId: source, createdAt: new Date(now), updatedAt: new Date(now),
+      temperatureSourceDeviceId: source, temperatureDisplayUnit: null, createdAt: new Date(now), updatedAt: new Date(now),
     };
     client.setQueryData(["/api/user-settings"], settings);
   }

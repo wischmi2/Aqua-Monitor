@@ -1,9 +1,10 @@
-import { useSyncExternalStore } from "react";
+import { createContext, useContext, useSyncExternalStore } from "react";
 import { isTemperatureDisplayUnit, type TemperatureDisplayUnit } from "@shared/temperature";
 
 // Keep the existing History key so saved browser preferences continue to work.
 export const TEMPERATURE_DISPLAY_STORAGE_KEY = "historyTemperatureDisplayUnit";
 const listeners = new Set<() => void>();
+const noSubscription = () => () => {};
 
 export function readTemperatureDisplayPreference(): TemperatureDisplayUnit | null {
   try {
@@ -42,6 +43,20 @@ function subscribe(listener: () => void) {
 }
 
 export function useTemperatureUnit() {
-  const selected = useSyncExternalStore(subscribe, () => preference, readTemperatureDisplayPreference);
-  return { unit: selected ?? "°F", setUnit: selectTemperatureUnit };
+  const account = useContext(TemperaturePreferenceContext);
+  const selected = useSyncExternalStore(account ? noSubscription : subscribe, () => preference, readTemperatureDisplayPreference);
+  return account ?? {
+    unit: selected ?? "°F", setUnit: selectTemperatureUnit,
+    disabled: false, status: null, retry: undefined,
+  };
 }
+
+export interface TemperaturePreference {
+  unit: TemperatureDisplayUnit;
+  setUnit: (unit: TemperatureDisplayUnit) => void;
+  disabled: boolean;
+  status: string | null;
+  retry?: () => void;
+}
+
+export const TemperaturePreferenceContext = createContext<TemperaturePreference | null>(null);

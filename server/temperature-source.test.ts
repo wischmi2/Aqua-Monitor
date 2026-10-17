@@ -61,7 +61,7 @@ test("temperature source preference persists per user, validates ownership and c
   t.mock.method(storage, "createUserSettings", async (data: Partial<UserSettings>) => {
     settings = {
       id: 1, userId: "owner", phoneNumber: null, alertsEnabled: 1,
-      alertCooldownMinutes: 30, temperatureSourceDeviceId: null,
+      alertCooldownMinutes: 30, temperatureSourceDeviceId: null, temperatureDisplayUnit: null,
       createdAt: new Date(), updatedAt: new Date(), ...data,
     };
     return settings;

@@ -21,7 +21,7 @@ import { isDeviceType, type DeviceType } from "@shared/device-types";
 import { temperatureSourceError } from "@shared/temperature-source";
 import { historyRangeStart } from "@shared/history";
 import { buildHistoryDevices, solarHistoryReadings } from "./history";
-import { extractTemperature, canCheckTemperatureAlert, temperatureInputUnitSchema, type TemperatureInputUnit } from "@shared/temperature";
+import { extractTemperature, canCheckTemperatureAlert, isTemperatureDisplayUnit, temperatureInputUnitSchema, type TemperatureInputUnit } from "@shared/temperature";
 
 async function loadHistoryDevices(userId: string, now = Date.now()) {
   const [devices, readings, solar] = await Promise.all([
@@ -966,8 +966,6 @@ export async function registerRoutes(
       if (!settings) {
         settings = await storage.createUserSettings({
           userId,
-          alertsEnabled: 1,
-          alertCooldownMinutes: 30,
         });
       }
       
@@ -981,7 +979,11 @@ export async function registerRoutes(
   app.patch("/api/user-settings", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const { phoneNumber, alertsEnabled, alertCooldownMinutes, temperatureSourceDeviceId } = req.body;
+      const { phoneNumber, alertsEnabled, alertCooldownMinutes, temperatureSourceDeviceId, temperatureDisplayUnit } = req.body;
+
+      if (temperatureDisplayUnit !== undefined && !isTemperatureDisplayUnit(temperatureDisplayUnit)) {
+        return res.status(400).json({ message: "Temperature display unit must be °C or °F" });
+      }
 
       if (temperatureSourceDeviceId !== undefined) {
         const [devices, readings] = await Promise.all([
@@ -1007,6 +1009,7 @@ export async function registerRoutes(
           alertsEnabled: alertsEnabled ?? 1,
           alertCooldownMinutes: alertCooldownMinutes ?? 30,
           temperatureSourceDeviceId: temperatureSourceDeviceId ?? null,
+          temperatureDisplayUnit: temperatureDisplayUnit ?? null,
         });
       } else {
         settings = await storage.updateUserSettings(userId, {
@@ -1014,6 +1017,7 @@ export async function registerRoutes(
           alertsEnabled: alertsEnabled !== undefined ? alertsEnabled : undefined,
           alertCooldownMinutes: alertCooldownMinutes !== undefined ? alertCooldownMinutes : undefined,
           temperatureSourceDeviceId: temperatureSourceDeviceId !== undefined ? temperatureSourceDeviceId : undefined,
+          temperatureDisplayUnit,
         });
       }
       

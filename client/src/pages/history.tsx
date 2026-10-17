@@ -12,6 +12,7 @@ import {
 import type { HistoryDevice, HistoryReading, HistoryRange, HistorySensor } from "@shared/history";
 import { useFlowUnit } from "@/hooks/use-flow-unit";
 import { useTemperatureUnit } from "@/hooks/use-temperature-unit";
+import { TemperaturePreferenceStatus } from "@/components/temperature-unit-control";
 import { buildHistoryAxis, formatHistoryAxisTick } from "@/lib/history-axis";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -75,7 +76,7 @@ export default function History() {
   const [timeRange, setTimeRange] = useState<HistoryRange>("24h");
   const [chartWidth, setChartWidth] = useState(400);
   const [now, setNow] = useState(() => Date.now());
-  const { unit: temperatureDisplayUnit, setUnit: selectTemperatureUnit } = useTemperatureUnit();
+  const { unit: temperatureDisplayUnit, setUnit: selectTemperatureUnit, disabled: temperaturePreferenceDisabled } = useTemperatureUnit();
   const { unit, setUnit, convertRate, convertVolume, rateUnit, volumeUnit } = useFlowUnit();
 
   useEffect(() => {
@@ -330,6 +331,7 @@ export default function History() {
                       </button>
                     )}
                     {hasKnownTemperatureUnit && (
+                      <div>
                       <div
                         role="group"
                         aria-label="Temperature display unit"
@@ -344,6 +346,7 @@ export default function History() {
                               : "button-history-temperature-fahrenheit"}
                             aria-pressed={temperatureDisplayUnit === temperatureUnit}
                             aria-label={`Display temperature in ${temperatureUnit === "°C" ? "Celsius" : "Fahrenheit"}`}
+                            disabled={temperaturePreferenceDisabled}
                             onClick={() => selectTemperatureUnit(temperatureUnit)}
                             className={`min-h-9 min-w-12 rounded-md px-3 text-sm font-semibold transition-colors ${
                               temperatureDisplayUnit === temperatureUnit
@@ -354,6 +357,8 @@ export default function History() {
                             {temperatureUnit}
                           </button>
                         ))}
+                      </div>
+                      <TemperaturePreferenceStatus />
                       </div>
                     )}
                   </div>

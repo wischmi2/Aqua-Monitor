@@ -4,7 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 import type { DeviceType } from "./device-types";
-import type { TemperatureInputUnit } from "./temperature";
+import type { TemperatureInputUnit, TemperatureDisplayUnit } from "./temperature";
 
 export * from "./models/auth";
 import { users } from "./models/auth";
@@ -190,6 +190,8 @@ export const userSettings = pgTable("user_settings", {
   alertsEnabled: integer("alerts_enabled").default(1).notNull(),
   alertCooldownMinutes: integer("alert_cooldown_minutes").default(30).notNull(),
   temperatureSourceDeviceId: text("temperature_source_device_id"),
+  // Display only; null preserves the legacy browser preference until a choice is saved.
+  temperatureDisplayUnit: text("temperature_display_unit").$type<TemperatureDisplayUnit>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

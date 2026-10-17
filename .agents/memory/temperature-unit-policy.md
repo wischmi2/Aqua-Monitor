@@ -14,3 +14,9 @@ The display-unit choice must be consistent even before the user saves a preferen
 **Why:** Sharing only explicit selections still leaves first-time users seeing conflicting selected units across Dashboard, PCB details, and History.
 
 **How to apply:** Treat source units as conversion metadata, not display preferences. Preserve the shared default when adding temperature channels or moving preferences to account settings.
+
+An explicit account display preference takes priority over the legacy browser choice. Do not automatically upload a legacy browser choice or write account selections back into the unscoped browser key.
+
+**Why:** A shared browser can contain another person's old choice. Automatically migrating it could overwrite a choice saved on another device or pass account preferences to the next person using that browser.
+
+**How to apply:** Use the legacy browser choice only as a fallback when an account has no saved preference; persist only explicit user selections. Keep account state isolated across sign-ins.
