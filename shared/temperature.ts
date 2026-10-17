@@ -3,6 +3,25 @@ import { z } from "zod";
 export const temperatureInputUnitSchema = z.enum(["unknown", "celsius", "fahrenheit"]);
 export type TemperatureInputUnit = z.infer<typeof temperatureInputUnitSchema>;
 
+export type TemperatureDisplayUnit = "°C" | "°F";
+
+export function isTemperatureDisplayUnit(unit: unknown): unit is TemperatureDisplayUnit {
+  return unit === "°C" || unit === "°F";
+}
+
+export function isTemperatureChannel(sensorType: string): boolean {
+  return ["temperature", "temp_c", "die_c"].includes(sensorType);
+}
+
+// Display-only conversion: unknown source units must never be inferred or relabeled.
+export function convertTemperatureForDisplay(
+  value: number, sourceUnit: string, targetUnit: TemperatureDisplayUnit,
+): number | null {
+  if (!Number.isFinite(value) || !isTemperatureDisplayUnit(sourceUnit)) return null;
+  if (sourceUnit === targetUnit) return value;
+  return targetUnit === "°C" ? (value - 32) * 5 / 9 : value * 9 / 5 + 32;
+}
+
 export function normalizeTemperature(value: number, unit: string) {
   if (unit === "°C") return { value: value * 9 / 5 + 32, unit: "°F" };
   if (unit === "°F") return { value, unit };

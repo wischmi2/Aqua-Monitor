@@ -6,7 +6,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { HistoryDevice, HistoryReading } from "@shared/history";
 import History from "../pages/history";
 
-Object.defineProperty(globalThis, "localStorage", { value: { getItem: () => null }, configurable: true });
+let preferredDisplayUnit: string | null = null;
+Object.defineProperty(globalThis, "localStorage", {
+  value: { getItem: (key: string) => key === "historyTemperatureDisplayUnit" ? preferredDisplayUnit : null },
+  configurable: true,
+});
 
 const recent = new Date(Date.now() - 60_000).toISOString();
 const device = (overrides: Partial<HistoryDevice> = {}): HistoryDevice => ({
@@ -19,7 +23,8 @@ const reading = (overrides: Partial<HistoryReading> = {}): HistoryReading => ({
   unit: "°F", recordedAt: recent, ...overrides,
 });
 
-function render(devices: HistoryDevice[], readings: HistoryReading[] = []) {
+function render(devices: HistoryDevice[], readings: HistoryReading[] = [], preference: string | null = null) {
+  preferredDisplayUnit = preference;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   client.setQueryData(["/api/sensors/history/devices"], devices);
   const selected = devices[0];
@@ -29,6 +34,7 @@ function render(devices: HistoryDevice[], readings: HistoryReading[] = []) {
   try {
     return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(History)));
   } finally {
+    preferredDisplayUnit = null;
     client.clear();
   }
 }
@@ -110,4 +116,62 @@ test("History normalizes labeled Celsius without rewriting or reinterpreting old
   assert.match(html, /22.00/);
   assert.equal(rows[1].value, 22);
   assert.equal(rows[1].unit, "°C");
+});
+
+test("Water temperature history displays either Celsius or Fahrenheit using the saved preference", () => {
+  const board = device({ sensors: [{ sensorType: "temp_c", label: "Water temperature", unit: "°C", kind: "number", source: "sensor" }] });
+  const rows = [reading({ sensorType: "temp_c", value: 21.94, unit: "°C" })];
+  const celsius = render([board], rows, "°C");
+  assert.match(celsius, /21.94/);
+  assert.match(celsius, /°C/);
+  assert.match(celsius, /history-numeric-chart/);
+  assert.match(celsius, /button-history-temperature-celsius/);
+  const fahrenheit = render([board], rows, "°F");
+  assert.match(fahrenheit, /71.49/);
+  assert.match(fahrenheit, /°F/);
+  assert.match(fahrenheit, /history-numeric-chart/);
+  assert.match(fahrenheit, /button-history-temperature-fahrenheit/);
+  assert.equal(rows[0].value, 21.94);
+  assert.equal(rows[0].unit, "°C");
+});
+
+test("the Fahrenheit Temperature channel can be plotted in Celsius", () => {
+  const html = render([device()], [reading({ value: 78, unit: "°F" })], "°C");
+  assert.match(html, /25.56/);
+  assert.match(html, /°C/);
+  assert.match(html, /history-numeric-chart/);
+});
+
+test("the die-temperature channel supports Fahrenheit and preserves zero measurements", () => {
+  const board = device({ sensors: [{ sensorType: "die_c", label: "Die temperature", unit: "°C", kind: "number", source: "sensor" }] });
+  const html = render([board], [reading({ sensorType: "die_c", value: 0, unit: "°C" })], "°F");
+  assert.match(html, /32.00/);
+  assert.match(html, /°F/);
+});
+
+test("unknown temperatures remain unknown even when a display preference is saved", () => {
+  const board = device({ sensors: [{ sensorType: "temperature", label: "Temperature", unit: "unknown", kind: "number", source: "sensor" }] });
+  const html = render([board], [reading({ value: 22, unit: "unknown" })], "°F");
+  assert.match(html, /22.00/);
+  assert.match(html, /Unit unknown/);
+  assert.doesNotMatch(html, /°F/);
+  assert.doesNotMatch(html, /°C/);
+});
+
+test("mixed known and unknown readings stay separate while known events follow the display choice", () => {
+  const html = render([device()], [
+    reading({ value: 22, unit: "unknown" }),
+    reading({ id: "sensor:2", value: 78, unit: "°F" }),
+  ], "°C");
+  assert.match(html, /history-mixed-temperature-units/);
+  assert.match(html, /Unit unknown/);
+  assert.match(html, /25.56/);
+  assert.doesNotMatch(html, /history-numeric-chart/);
+});
+
+test("invalid saved unit preferences leave raw Celsius history in its original default unit", () => {
+  const board = device({ sensors: [{ sensorType: "temp_c", label: "Water temperature", unit: "°C", kind: "number", source: "sensor" }] });
+  const html = render([board], [reading({ sensorType: "temp_c", value: 21.94, unit: "°C" })], "Kelvin");
+  assert.match(html, /21.94/);
+  assert.match(html, /°C/);
 });

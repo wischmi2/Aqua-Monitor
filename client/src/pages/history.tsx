@@ -17,7 +17,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hasRecentHistoryReport, HISTORY_RANGES, normalizeHistoryReading } from "@shared/history";
-import { temperatureUnitLabel, normalizeTemperature } from "@shared/temperature";
+import {
+  convertTemperatureForDisplay,
+  isTemperatureChannel,
+  isTemperatureDisplayUnit,
+  normalizeTemperature,
+  temperatureUnitLabel,
+  type TemperatureDisplayUnit,
+} from "@shared/temperature";
 
 const sensorColors = [
   "hsl(var(--chart-3))",
@@ -27,6 +34,17 @@ const sensorColors = [
   "hsl(var(--chart-5))",
 ];
 const FLOW_SENSOR_TYPES = ["flow_rate_lpm", "flow_liters"];
+const TEMPERATURE_DISPLAY_STORAGE_KEY = "historyTemperatureDisplayUnit";
+
+function readTemperatureDisplayPreference(): TemperatureDisplayUnit | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const preference = localStorage.getItem(TEMPERATURE_DISPLAY_STORAGE_KEY);
+    return isTemperatureDisplayUnit(preference) ? preference : null;
+  } catch {
+    return null;
+  }
+}
 
 function dateTime(value: string) {
   const date = new Date(value);
@@ -43,6 +61,12 @@ function dateTime(value: string) {
 function displayValue(value: string | number | boolean) {
   if (typeof value === "boolean") return value ? "True" : "False";
   return String(value);
+}
+
+function formatEventValue(reading: HistoryReading, isTempSensor: boolean) {
+  if (!isTempSensor || typeof reading.value !== "number") return displayValue(reading.value);
+  const rounded = Number(reading.value.toFixed(2));
+  return String(rounded);
 }
 
 async function readError(response: Response) {
@@ -62,6 +86,9 @@ export default function History() {
   const [timeRange, setTimeRange] = useState<HistoryRange>("24h");
   const [chartWidth, setChartWidth] = useState(400);
   const [now, setNow] = useState(() => Date.now());
+  const [temperaturePreference, setTemperaturePreference] = useState<TemperatureDisplayUnit | null>(
+    readTemperatureDisplayPreference,
+  );
   const { unit, setUnit, convertRate, convertVolume, rateUnit, volumeUnit } = useFlowUnit();
 
   useEffect(() => {
@@ -128,21 +155,40 @@ export default function History() {
     [historyQuery.data, resolvedDeviceId, resolvedSensorType],
   );
   const isFlowSensor = FLOW_SENSOR_TYPES.includes(resolvedSensorType);
+  const isTempSensor = isTemperatureChannel(resolvedSensorType);
+  const temperatureDisplayUnit = temperaturePreference
+    ?? (resolvedSensorType === "temperature" ? "°F" : "°C");
+  const displayReadings = isTempSensor
+    ? readings.map((reading) => {
+      if (typeof reading.value !== "number") return reading;
+      const converted = convertTemperatureForDisplay(
+        reading.value,
+        reading.unit,
+        temperatureDisplayUnit,
+      );
+      return converted === null ? reading : { ...reading, value: converted, unit: temperatureDisplayUnit };
+    })
+    : readings;
+  const hasKnownTemperatureUnit = isTempSensor
+    && readings.some((reading) => isTemperatureDisplayUnit(reading.unit));
+  const hasUnknownTemperatureUnit = isTempSensor
+    && readings.some((reading) => !isTemperatureDisplayUnit(reading.unit));
   const displayUnit = isFlowSensor
     ? resolvedSensorType === "flow_rate_lpm" ? rateUnit : volumeUnit
-    : resolvedSensorType === "temperature"
-      ? temperatureUnitLabel(readings[0]?.unit ?? normalizeTemperature(0, activeSensor?.unit ?? "").unit)
+    : isTempSensor
+      ? hasKnownTemperatureUnit
+        ? temperatureDisplayUnit
+        : temperatureUnitLabel(readings[0]?.unit ?? normalizeTemperature(0, activeSensor?.unit ?? "").unit)
       : activeSensor?.unit ?? "";
   const color = sensorColors[Math.max(0, deviceSensors.findIndex((sensor) => sensor.sensorType === resolvedSensorType) % sensorColors.length)];
 
-  const numericReadings = readings.filter(
+  const numericReadings = displayReadings.filter(
     (reading) => typeof reading.value === "number" && Number.isFinite(reading.value),
   );
   const hasNonNumericReading = readings.some(
     (reading) => typeof reading.value !== "number" || !Number.isFinite(reading.value),
   );
-  const mixedTemperatureUnits = resolvedSensorType === "temperature"
-    && new Set(readings.map((reading) => reading.unit)).size > 1;
+  const mixedTemperatureUnits = isTempSensor && hasKnownTemperatureUnit && hasUnknownTemperatureUnit;
   const showEvents = activeSensor?.kind === "state" || hasNonNumericReading || mixedTemperatureUnits;
   const chartData = numericReadings.map((reading) => ({
     timestamp: new Date(reading.recordedAt).getTime(),
@@ -154,8 +200,19 @@ export default function History() {
     [chartData, chartWidth],
   );
   const recentReadings = numericReadings.slice(-10).reverse();
-  const eventReadings = readings.slice().reverse();
+  const eventReadings = displayReadings.slice().reverse();
   const hasSelection = Boolean(activeDevice && activeSensor);
+
+  function selectTemperatureUnit(nextUnit: TemperatureDisplayUnit) {
+    setTemperaturePreference(nextUnit);
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(TEMPERATURE_DISPLAY_STORAGE_KEY, nextUnit);
+      }
+    } catch {
+      // Keep the current selection for this session when storage is unavailable.
+    }
+  }
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-7 px-4 pb-24 pt-6 md:px-8 md:pb-10">
@@ -298,6 +355,33 @@ export default function History() {
                         Displaying {unit === "gallons" ? "gallons" : "liters"} · switch to {unit === "gallons" ? "L" : "gal"}
                       </button>
                     )}
+                    {hasKnownTemperatureUnit && (
+                      <div
+                        role="group"
+                        aria-label="Temperature display unit"
+                        className="flex w-fit items-center rounded-lg border border-border bg-background p-1"
+                      >
+                        {(["°C", "°F"] as const).map((temperatureUnit) => (
+                          <button
+                            key={temperatureUnit}
+                            type="button"
+                            data-testid={temperatureUnit === "°C"
+                              ? "button-history-temperature-celsius"
+                              : "button-history-temperature-fahrenheit"}
+                            aria-pressed={temperatureDisplayUnit === temperatureUnit}
+                            aria-label={`Display temperature in ${temperatureUnit === "°C" ? "Celsius" : "Fahrenheit"}`}
+                            onClick={() => selectTemperatureUnit(temperatureUnit)}
+                            className={`min-h-9 min-w-12 rounded-md px-3 text-sm font-semibold transition-colors ${
+                              temperatureDisplayUnit === temperatureUnit
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            }`}
+                          >
+                            {temperatureUnit}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="grid gap-1 text-sm sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-x-3">
                     <span className="text-muted-foreground">Source board</span>
@@ -362,7 +446,7 @@ export default function History() {
                           <li key={reading.id} className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
                             <time dateTime={reading.recordedAt} className="text-sm text-muted-foreground">{dateTime(reading.recordedAt)}</time>
                             <span className="break-words font-mono text-sm font-medium sm:text-right">
-                              {displayValue(reading.value)}{resolvedSensorType === "temperature"
+                              {formatEventValue(reading, isTempSensor)}{isTempSensor
                                 ? ` ${temperatureUnitLabel(reading.unit)}` : reading.unit ? ` ${reading.unit}` : ""}
                             </span>
                           </li>
